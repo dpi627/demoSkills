@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Project Idea Studio</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <canvas id="bgCanvas" aria-hidden="true"></canvas>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">◆</span>
+        <div>
+          <p class="brand-title">Project Idea Studio</p>
+          <p class="brand-subtitle">Open, simple, and local-first</p>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <button id="themeToggle" class="ghost" type="button">Light mode</button>
+        <div class="topbar-note">No auth · Stored in your browser</div>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <aside class="panel projects-panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Your space</p>
+            <h2>Projects</h2>
+          </div>
+          <form id="projectForm" class="inline-form" autocomplete="off">
+            <input id="projectName" type="text" placeholder="New project name" maxlength="50" required />
+            <button type="submit" class="primary">Add</button>
+          </form>
+        </div>
+        <div id="projectsList" class="project-list"></div>
+      </aside>
+
+      <section class="panel ideas-panel">
+        <div class="panel-header">
+          <div class="project-header">
+            <div>
+              <p class="eyebrow">Idea board</p>
+              <h2 id="activeProjectName">Select a project</h2>
+            </div>
+            <div class="project-progress">
+              <div class="progress-track">
+                <div id="progressFill" class="progress-fill"></div>
+              </div>
+              <span id="progressLabel">0%</span>
+            </div>
+          </div>
+          <form id="ideaForm" class="inline-form" autocomplete="off">
+            <input id="ideaText" type="text" placeholder="Add an idea..." maxlength="80" required />
+            <button type="submit" class="primary">Add idea</button>
+          </form>
+        </div>
+
+        <div id="ideasEmpty" class="empty-state">
+          <p>Start by creating a project and capturing a few ideas.</p>
+        </div>
+        <ul id="ideasList" class="ideas-list"></ul>
+      </section>
+
+      <aside class="panel log-panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Session log</p>
+            <h2>Finished ideas</h2>
+          </div>
+        </div>
+        <div id="logEmpty" class="empty-state">
+          <p>Complete an idea to see it logged here.</p>
+        </div>
+        <ul id="logList" class="log-list"></ul>
+      </aside>
+    </main>
+  </div>
+
+  <dialog id="editDialog" class="dialog">
+    <form id="editForm" class="dialog-card" autocomplete="off">
+      <h3>Edit idea</h3>
+      <input id="editInput" type="text" maxlength="80" required />
+      <div class="dialog-actions">
+        <button id="editCancel" class="ghost" type="button">Cancel</button>
+        <button class="primary" type="submit">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>
