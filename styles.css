@@ -518,20 +518,6 @@ button:hover {
   transform: translateY(0);
 }
 
-.toggle-button {
-  color: var(--muted);
-}
-
-.idea-item.completed .toggle-button {
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  color: #fff;
-}
-
-.toggle-button svg {
-  width: 16px;
-  height: 16px;
-}
-
 .icon-button {
   padding: 6px 10px;
   border-radius: 999px;

@@ -78,6 +78,11 @@ const ICONS = {
       <path d="M9 12l2 2 4-4" />
     </svg>
   `,
+  check: `
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
+  `,
   copy: `
     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
       <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
@@ -1263,8 +1268,8 @@ class ProjectIdeaUI {
       item.dataset.id = idea.id;
       const finishedLabel = idea.done && idea.finishedAt ? formatDate(idea.finishedAt) : "";
       const createdLabel = formatDate(idea.createdAt);
-      const toggleLabel = idea.done ? "Mark active" : "Mark complete";
-      const toggleIcon = idea.done ? ICONS.checkCircle : ICONS.circle;
+      const toggleLabel = idea.done ? "Reopen" : "Mark complete";
+      const toggleIcon = idea.done ? ICONS.reopen : ICONS.check;
       item.innerHTML = `
         <span class="idea-text">
           <span class="idea-title">${escapeHtml(idea.text)}</span>
