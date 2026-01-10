@@ -526,6 +526,7 @@ class ProjectIdeaUI {
     this.logList = document.getElementById("logList");
     this.logEmpty = document.getElementById("logEmpty");
     this.logFilter = document.getElementById("logFilter");
+    this.logProjectFilter = document.getElementById("logProjectFilter");
     this.editDialog = document.getElementById("editDialog");
     this.editForm = document.getElementById("editForm");
     this.editTitle = document.getElementById("editTitle");
@@ -546,6 +547,7 @@ class ProjectIdeaUI {
     this.animateIdeasOnNextRender = true;
     this.isLogVisible = true;
     this.logFilterValue = "";
+    this.logProjectFilterValue = "all";
     this.ideaFilter = "todo";
 
     const initialTheme = this.themeService.init();
@@ -752,6 +754,11 @@ class ProjectIdeaUI {
 
     this.logFilter.addEventListener("input", (event) => {
       this.logFilterValue = event.target.value.trim().toLowerCase();
+      this.renderLog();
+    });
+
+    this.logProjectFilter.addEventListener("change", (event) => {
+      this.logProjectFilterValue = event.target.value;
       this.renderLog();
     });
 
@@ -1161,13 +1168,30 @@ class ProjectIdeaUI {
   renderLog() {
     const entries = this.service.getFinishedLog();
     this.logList.innerHTML = "";
+    const projects = this.service.getProjects();
+    const previousProjectFilter = this.logProjectFilterValue;
+    this.logProjectFilter.innerHTML = `<option value="all">All projects</option>`;
+    projects.forEach((project) => {
+      const option = document.createElement("option");
+      option.value = project.id;
+      option.textContent = project.name;
+      this.logProjectFilter.appendChild(option);
+    });
+    const hasProjectFilter =
+      previousProjectFilter !== "all" &&
+      projects.some((project) => project.id === previousProjectFilter);
+    this.logProjectFilterValue = hasProjectFilter ? previousProjectFilter : "all";
+    this.logProjectFilter.value = this.logProjectFilterValue;
+
     const query = this.logFilterValue;
-    const filteredEntries = query
-      ? entries.filter(({ projectName, idea }) => {
-          const haystack = `${projectName} ${idea.text}`.toLowerCase();
-          return haystack.includes(query);
-        })
-      : entries;
+    const filteredEntries = entries.filter(({ projectId, projectName, idea }) => {
+      if (this.logProjectFilterValue !== "all" && projectId !== this.logProjectFilterValue) {
+        return false;
+      }
+      if (!query) return true;
+      const haystack = `${projectName} ${idea.text}`.toLowerCase();
+      return haystack.includes(query);
+    });
     const visibleEntries = filteredEntries.slice(0, 10);
 
     if (visibleEntries.length === 0) {

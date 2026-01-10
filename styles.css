@@ -146,7 +146,8 @@ body {
   gap: 18px;
 }
 
-.log-filter input {
+.log-filter input,
+.log-filter select {
   padding: 8px 12px;
   border-radius: 12px;
   border: 1px solid var(--border);
@@ -154,6 +155,10 @@ body {
   color: var(--ink);
   font-size: 12px;
   width: 100%;
+}
+
+#logProjectFilter {
+  margin-top: 3px;
 }
 
 .eyebrow {
@@ -321,6 +326,11 @@ button:hover {
   transform: translateY(-2px);
 }
 
+.project-card:hover,
+.project-card:focus-within {
+  border-color: rgba(31, 138, 112, 0.6);
+}
+
 .project-card.active .project-live {
   opacity: 1;
   transform: scale(1);
@@ -460,6 +470,11 @@ button:hover {
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
+.idea-item:hover,
+.idea-item:focus-within {
+  border-color: rgba(31, 138, 112, 0.6);
+}
+
 .idea-item.completed {
   opacity: 0.65;
 }
@@ -538,6 +553,11 @@ button:hover {
   display: grid;
   gap: 6px;
   position: relative;
+}
+
+.log-item:hover,
+.log-item:focus-within {
+  border-color: rgba(31, 138, 112, 0.6);
 }
 
 .log-item span {
