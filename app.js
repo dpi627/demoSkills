@@ -111,6 +111,20 @@ const ICONS = {
       <path d="M3.5 15a9 9 0 1 0 2.3-9.7L1 10" />
     </svg>
   `,
+  download: `
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="7 10 12 15 17 10" />
+      <line x1="12" y1="15" x2="12" y2="3" />
+    </svg>
+  `,
+  upload: `
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="17 8 12 3 7 8" />
+      <line x1="12" y1="3" x2="12" y2="15" />
+    </svg>
+  `,
 };
 
 // Domain layer
@@ -241,6 +255,52 @@ class ProjectService {
     this.projects = [project, ...this.projects];
     this.repository.save(this.projects);
     return project;
+  }
+
+  exportProjects() {
+    return this.projects.map((project) => ({
+      id: project.id,
+      name: project.name,
+      description: project.description,
+      ideas: project.ideas.map((idea) => ({
+        id: idea.id,
+        text: idea.text,
+        done: idea.done,
+        createdAt: idea.createdAt,
+        finishedAt: idea.finishedAt,
+      })),
+    }));
+  }
+
+  importProjects(payload) {
+    if (!Array.isArray(payload)) {
+      throw new Error("Import data must be an array of projects.");
+    }
+    const projects = payload.map((project) => {
+      if (!project || typeof project.name !== "string") {
+        throw new Error("Each project must include a name.");
+      }
+      const ideas = Array.isArray(project.ideas)
+        ? project.ideas
+            .filter((idea) => idea && typeof idea.text === "string")
+            .map((idea) => ({
+              id: idea.id,
+              text: idea.text,
+              done: Boolean(idea.done),
+              createdAt: Number.isFinite(idea.createdAt) ? idea.createdAt : Date.now(),
+              finishedAt: idea.finishedAt || null,
+            }))
+        : [];
+      return new Project({
+        id: project.id,
+        name: project.name,
+        description: project.description || "",
+        ideas,
+      });
+    });
+    this.projects = projects;
+    this.repository.save(this.projects);
+    return this.projects;
   }
 
   updateProjectName(projectId, name) {
@@ -514,6 +574,9 @@ class ProjectIdeaUI {
     this.progressFill = document.getElementById("progressFill");
     this.progressLabel = document.getElementById("progressLabel");
     this.themeToggle = document.getElementById("themeToggle");
+    this.exportButton = document.getElementById("exportData");
+    this.importButton = document.getElementById("importData");
+    this.importFileInput = document.getElementById("importFile");
     this.logToggle = document.getElementById("logToggle");
     this.workspace = document.querySelector(".workspace");
     this.logPanel = document.querySelector(".log-panel");
@@ -554,6 +617,7 @@ class ProjectIdeaUI {
     this.updateThemeLabel(initialTheme);
     this.background.updatePalette();
     this.applyLogVisibility();
+    this.updateDataButtons();
 
     this.bindEvents();
     this.render();
@@ -747,6 +811,48 @@ class ProjectIdeaUI {
       this.background.updatePalette();
     });
 
+    this.exportButton.addEventListener("click", () => {
+      const data = this.service.exportProjects();
+      const json = JSON.stringify(data, null, 2);
+      const blob = new Blob([json], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const stamp = new Date().toISOString().slice(0, 10);
+      link.href = url;
+      link.download = `project-ideas-${stamp}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    });
+
+    this.importButton.addEventListener("click", () => {
+      this.importFileInput.value = "";
+      this.importFileInput.click();
+    });
+
+    this.importFileInput.addEventListener("change", (event) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const payload = JSON.parse(reader.result);
+          this.openConfirmDialog({
+            title: "Import data",
+            message: "Importing will replace all current projects and ideas. Continue?",
+            confirmText: "Import data",
+            onConfirm: () => {
+              this.applyImport(payload);
+            },
+          });
+        } catch (error) {
+          window.alert("Import failed. Please select a valid JSON file.");
+        }
+      };
+      reader.readAsText(file);
+    });
+
     this.logToggle.addEventListener("click", () => {
       this.isLogVisible = !this.isLogVisible;
       this.applyLogVisibility();
@@ -849,6 +955,16 @@ class ProjectIdeaUI {
     this.themeToggle.title = label;
   }
 
+  updateDataButtons() {
+    this.exportButton.innerHTML = `${ICONS.download}<span class="sr-only">Export data</span>`;
+    this.exportButton.setAttribute("aria-label", "Export data");
+    this.exportButton.title = "Export data";
+
+    this.importButton.innerHTML = `${ICONS.upload}<span class="sr-only">Import data</span>`;
+    this.importButton.setAttribute("aria-label", "Import data");
+    this.importButton.title = "Import data";
+  }
+
   updateLogToggleLabel() {
     const label = this.isLogVisible ? "Hide log" : "Show log";
     const icon = this.isLogVisible ? ICONS.logOff : ICONS.log;
@@ -862,6 +978,19 @@ class ProjectIdeaUI {
     this.logPanel.classList.toggle("is-hidden", !this.isLogVisible);
     this.workspace.classList.toggle("log-hidden", !this.isLogVisible);
     this.updateLogToggleLabel();
+  }
+
+  applyImport(payload) {
+    try {
+      this.service.importProjects(payload);
+      this.activeProjectId = this.service.getProjects()[0]?.id || null;
+      this.ideaFilter = "todo";
+      this.animateProjectsOnNextRender = true;
+      this.animateIdeasOnNextRender = true;
+      this.render();
+    } catch (error) {
+      window.alert("Import failed. Please check the file format.");
+    }
   }
 
   openEditDialog({ mode, id, text, description = "", title, maxLength }) {

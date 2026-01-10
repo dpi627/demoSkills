@@ -238,7 +238,8 @@ button.icon-button svg {
 }
 
 button.theme-toggle,
-button.log-toggle {
+button.log-toggle,
+button.topbar-icon {
   padding: 8px 12px;
   display: inline-flex;
   align-items: center;
@@ -248,7 +249,8 @@ button.log-toggle {
 }
 
 button.theme-toggle svg,
-button.log-toggle svg {
+button.log-toggle svg,
+button.topbar-icon svg {
   width: 18px;
   height: 18px;
   stroke: currentColor;
