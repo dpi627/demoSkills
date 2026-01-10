@@ -105,6 +105,12 @@ const ICONS = {
       <line x1="2" y1="2" x2="22" y2="22" />
     </svg>
   `,
+  reopen: `
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <polyline points="1 4 1 10 7 10" />
+      <path d="M3.5 15a9 9 0 1 0 2.3-9.7L1 10" />
+    </svg>
+  `,
 };
 
 // Domain layer
@@ -722,6 +728,30 @@ class ProjectIdeaUI {
       this.renderLog();
     });
 
+    this.logList.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-action]");
+      if (!button) return;
+      const action = button.dataset.action;
+      if (action !== "reopen") return;
+      const item = button.closest(".log-item");
+      const projectId = item?.dataset.projectId;
+      const ideaId = item?.dataset.ideaId;
+      if (!projectId || !ideaId) return;
+      const idea = this.service.findIdea(projectId, ideaId);
+      this.openConfirmDialog({
+        title: "Reopen idea",
+        message: `Reopen "${idea.text}"?`,
+        confirmText: "Reopen idea",
+        onConfirm: () => {
+          this.service.toggleIdea(projectId, ideaId);
+          if (this.activeProjectId === projectId) {
+            this.animateIdeasOnNextRender = false;
+          }
+          this.render();
+        },
+      });
+    });
+
     this.editForm.addEventListener("submit", (event) => {
       event.preventDefault();
       const text = this.editInput.value.trim();
@@ -971,7 +1001,9 @@ class ProjectIdeaUI {
 
     this.ideasList.innerHTML = "";
 
-    if (project.ideas.length === 0) {
+    const activeIdeas = project.ideas.filter((idea) => !idea.done);
+
+    if (activeIdeas.length === 0) {
       this.ideasEmpty.style.display = "block";
       this.ideasEmpty.textContent = "Add an idea and keep the momentum going.";
       return;
@@ -979,7 +1011,7 @@ class ProjectIdeaUI {
 
     this.ideasEmpty.style.display = "none";
 
-    project.ideas.forEach((idea, index) => {
+    activeIdeas.forEach((idea, index) => {
       const item = document.createElement("li");
       item.className = shouldAnimate ? "idea-item fade-in" : "idea-item";
       if (shouldAnimate) {
@@ -1039,13 +1071,21 @@ class ProjectIdeaUI {
     }
 
     this.logEmpty.style.display = "none";
-    visibleEntries.forEach(({ projectName, idea }) => {
+    visibleEntries.forEach(({ projectId, projectName, idea }) => {
       const item = document.createElement("li");
       item.className = "log-item";
+      item.dataset.projectId = projectId;
+      item.dataset.ideaId = idea.id;
       item.innerHTML = `
         <span>${escapeHtml(idea.text)}</span>
         <small>Finished ${formatDate(idea.finishedAt)}</small>
         <small>${escapeHtml(projectName)}</small>
+        <div class="log-actions">
+          <button class="icon-button" type="button" data-action="reopen" aria-label="Reopen idea" title="Reopen idea">
+            ${ICONS.reopen}
+            <span class="sr-only">Reopen</span>
+          </button>
+        </div>
       `;
       this.logList.appendChild(item);
     });
