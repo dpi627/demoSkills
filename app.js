@@ -12,12 +12,13 @@ const formatDate = (value) => {
   if (!value) return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const pad2 = (part) => String(part).padStart(2, "0");
+  const year = date.getFullYear();
+  const month = pad2(date.getMonth() + 1);
+  const day = pad2(date.getDate());
+  const hours = pad2(date.getHours());
+  const minutes = pad2(date.getMinutes());
+  return `${year}-${month}-${day} ${hours}:${minutes}`;
 };
 
 const escapeHtml = (value) =>
@@ -31,6 +32,80 @@ const escapeHtml = (value) =>
     };
     return map[char] || char;
   });
+
+const ICONS = {
+  edit: `
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+    </svg>
+  `,
+  trash: `
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+      <path d="M10 11v6" />
+      <path d="M14 11v6" />
+      <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+    </svg>
+  `,
+  sun: `
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <circle cx="12" cy="12" r="5" />
+      <line x1="12" y1="1" x2="12" y2="3" />
+      <line x1="12" y1="21" x2="12" y2="23" />
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+      <line x1="1" y1="12" x2="3" y2="12" />
+      <line x1="21" y1="12" x2="23" y2="12" />
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+    </svg>
+  `,
+  moon: `
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+    </svg>
+  `,
+  circle: `
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <circle cx="12" cy="12" r="8" />
+    </svg>
+  `,
+  checkCircle: `
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <circle cx="12" cy="12" r="8" />
+      <path d="M9 12l2 2 4-4" />
+    </svg>
+  `,
+  copy: `
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  `,
+  log: `
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <line x1="9" y1="6" x2="21" y2="6" />
+      <line x1="9" y1="12" x2="21" y2="12" />
+      <line x1="9" y1="18" x2="21" y2="18" />
+      <circle cx="4" cy="6" r="1.6" />
+      <circle cx="4" cy="12" r="1.6" />
+      <circle cx="4" cy="18" r="1.6" />
+    </svg>
+  `,
+  logOff: `
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <line x1="9" y1="6" x2="21" y2="6" />
+      <line x1="9" y1="12" x2="19" y2="12" />
+      <line x1="9" y1="18" x2="21" y2="18" />
+      <circle cx="4" cy="6" r="1.6" />
+      <circle cx="4" cy="12" r="1.6" />
+      <circle cx="4" cy="18" r="1.6" />
+      <line x1="2" y1="2" x2="22" y2="22" />
+    </svg>
+  `,
+};
 
 // Domain layer
 class Idea {
@@ -91,6 +166,7 @@ class LocalStorageProjectRepository {
         text: idea.text,
         done: idea.done,
         createdAt: idea.createdAt,
+        finishedAt: idea.finishedAt,
       })),
     }));
     localStorage.setItem(this.storageKey, JSON.stringify(payload));
@@ -127,9 +203,6 @@ class ProjectService {
       this.projects = createMockProjects();
       this.repository.save(this.projects);
     }
-
-    this.clearFinishedDates();
-    this.repository.save(this.projects);
   }
 
   getProjects() {
@@ -141,7 +214,7 @@ class ProjectService {
     this.projects.forEach((project) => {
       project.ideas.forEach((idea) => {
         if (idea.done && idea.finishedAt) {
-          entries.push({ projectName: project.name, idea });
+          entries.push({ projectId: project.id, projectName: project.name, idea });
         }
       });
     });
@@ -157,9 +230,20 @@ class ProjectService {
     return project;
   }
 
+  updateProjectName(projectId, name) {
+    const project = this.findProject(projectId);
+    project.name = name.trim();
+    this.repository.save(this.projects);
+  }
+
+  deleteProject(projectId) {
+    this.projects = this.projects.filter((item) => item.id !== projectId);
+    this.repository.save(this.projects);
+  }
+
   addIdea(projectId, text) {
     const project = this.findProject(projectId);
-    project.ideas.push(new Idea({ text: text.trim() }));
+    project.ideas.unshift(new Idea({ text: text.trim() }));
     this.repository.save(this.projects);
   }
 
@@ -176,9 +260,17 @@ class ProjectService {
   }
 
   toggleIdea(projectId, ideaId) {
-    const idea = this.findIdea(projectId, ideaId);
+    const project = this.findProject(projectId);
+    const index = project.ideas.findIndex((item) => item.id === ideaId);
+    if (index === -1) throw new Error("Idea not found");
+    const [idea] = project.ideas.splice(index, 1);
     idea.done = !idea.done;
     idea.finishedAt = idea.done ? new Date().toISOString() : null;
+    if (idea.done) {
+      project.ideas.push(idea);
+    } else {
+      project.ideas.unshift(idea);
+    }
     this.repository.save(this.projects);
   }
 
@@ -211,14 +303,6 @@ class ProjectService {
     const [moved] = this.projects.splice(fromIndex, 1);
     this.projects.splice(toIndex, 0, moved);
     this.repository.save(this.projects);
-  }
-
-  clearFinishedDates() {
-    this.projects.forEach((project) => {
-      project.ideas.forEach((idea) => {
-        idea.finishedAt = null;
-      });
-    });
   }
 
   findProject(projectId) {
@@ -267,6 +351,7 @@ class PolyBackground {
     this.ctx = canvas.getContext("2d");
     this.points = [];
     this.pointer = { x: 0, y: 0, lastMove: 0, active: false };
+    this.motion = { offsetX: 0, offsetY: 0 };
     this.palette = { line: "#1f8a70", accent: "#e9b44c" };
 
     this.resize();
@@ -294,8 +379,8 @@ class PolyBackground {
     this.points = Array.from({ length: 36 }, () => ({
       x: Math.random() * this.width,
       y: Math.random() * this.height,
-      vx: (Math.random() - 0.5) * 0.6,
-      vy: (Math.random() - 0.5) * 0.6,
+      vx: (Math.random() - 0.5) * 0.24,
+      vy: (Math.random() - 0.5) * 0.24,
       phase: Math.random() * Math.PI * 2,
     }));
   }
@@ -305,6 +390,7 @@ class PolyBackground {
     window.addEventListener("mousemove", (event) => this.handleMove(event.clientX, event.clientY));
     window.addEventListener("mouseleave", () => {
       this.pointer.active = false;
+      this.pointer.lastMove = 0;
     });
     window.addEventListener("touchmove", (event) => {
       const touch = event.touches[0];
@@ -313,6 +399,7 @@ class PolyBackground {
     });
     window.addEventListener("touchend", () => {
       this.pointer.active = false;
+      this.pointer.lastMove = 0;
     });
   }
 
@@ -333,28 +420,24 @@ class PolyBackground {
 
   animate() {
     const now = Date.now();
-    this.pointer.active = now - this.pointer.lastMove < 1200;
+    const isMoving = now - this.pointer.lastMove < 700;
+    this.pointer.active = isMoving;
+    const targetX = isMoving ? (this.pointer.x - this.width / 2) * 0.07 : 0;
+    const targetY = isMoving ? (this.pointer.y - this.height / 2) * 0.07 : 0;
+    this.motion.offsetX += (targetX - this.motion.offsetX) * 0.03;
+    this.motion.offsetY += (targetY - this.motion.offsetY) * 0.03;
     this.ctx.clearRect(0, 0, this.width, this.height);
     this.updatePoints(now);
-    this.drawNetwork();
+    this.drawNetwork(now);
     requestAnimationFrame(this.animate);
   }
 
   updatePoints(now) {
-    const pullStrength = this.pointer.active ? 0.0016 : 0;
     this.points.forEach((point) => {
-      point.vx += Math.sin(now / 1200 + point.phase) * 0.02;
-      point.vy += Math.cos(now / 1100 + point.phase) * 0.02;
-
-      if (pullStrength) {
-        const dx = this.pointer.x - point.x;
-        const dy = this.pointer.y - point.y;
-        point.vx += dx * pullStrength;
-        point.vy += dy * pullStrength;
-      }
-
-      point.vx *= 0.98;
-      point.vy *= 0.98;
+      point.vx += Math.sin(now / 1800 + point.phase) * 0.012;
+      point.vy += Math.cos(now / 1700 + point.phase) * 0.012;
+      point.vx *= 0.965;
+      point.vy *= 0.965;
       point.x += point.vx;
       point.y += point.vy;
 
@@ -363,19 +446,26 @@ class PolyBackground {
     });
   }
 
-  drawNetwork() {
-    const maxDistance = 140;
+  drawNetwork(now) {
+    const maxDistance = 170;
+    const scale = 0.7 + ((Math.sin(now / 4500) + 1) / 2) * 0.5;
+    const centerX = this.width / 2 + this.motion.offsetX;
+    const centerY = this.height / 2 + this.motion.offsetY;
+    this.ctx.save();
+    this.ctx.translate(centerX, centerY);
+    this.ctx.scale(scale, scale);
+    this.ctx.translate(-this.width / 2, -this.height / 2);
     for (let i = 0; i < this.points.length; i += 1) {
       for (let j = i + 1; j < this.points.length; j += 1) {
         const dx = this.points[i].x - this.points[j].x;
         const dy = this.points[i].y - this.points[j].y;
         const dist = Math.hypot(dx, dy);
         if (dist < maxDistance) {
-          const alpha = (1 - dist / maxDistance) * 0.3;
+          const alpha = (1 - dist / maxDistance) * 0.45;
           this.ctx.strokeStyle = `${this.palette.line}${Math.round(alpha * 255)
             .toString(16)
             .padStart(2, "0")}`;
-          this.ctx.lineWidth = 1;
+          this.ctx.lineWidth = 1.2;
           this.ctx.beginPath();
           this.ctx.moveTo(this.points[i].x, this.points[i].y);
           this.ctx.lineTo(this.points[j].x, this.points[j].y);
@@ -383,6 +473,7 @@ class PolyBackground {
         }
       }
     }
+    this.ctx.restore();
   }
 
 }
@@ -403,6 +494,9 @@ class ProjectIdeaUI {
     this.progressFill = document.getElementById("progressFill");
     this.progressLabel = document.getElementById("progressLabel");
     this.themeToggle = document.getElementById("themeToggle");
+    this.logToggle = document.getElementById("logToggle");
+    this.workspace = document.querySelector(".workspace");
+    this.logPanel = document.querySelector(".log-panel");
 
     this.ideaForm = document.getElementById("ideaForm");
     this.ideaTextInput = document.getElementById("ideaText");
@@ -410,15 +504,31 @@ class ProjectIdeaUI {
     this.ideasEmpty = document.getElementById("ideasEmpty");
     this.logList = document.getElementById("logList");
     this.logEmpty = document.getElementById("logEmpty");
+    this.logFilter = document.getElementById("logFilter");
     this.editDialog = document.getElementById("editDialog");
     this.editForm = document.getElementById("editForm");
+    this.editTitle = document.getElementById("editTitle");
     this.editInput = document.getElementById("editInput");
     this.editCancel = document.getElementById("editCancel");
+    this.confirmDialog = document.getElementById("confirmDialog");
+    this.confirmForm = document.getElementById("confirmForm");
+    this.confirmTitle = document.getElementById("confirmTitle");
+    this.confirmMessage = document.getElementById("confirmMessage");
+    this.confirmCancel = document.getElementById("confirmCancel");
+    this.confirmConfirm = document.getElementById("confirmConfirm");
     this.editingIdeaId = null;
+    this.editingProjectId = null;
+    this.editingMode = null;
+    this.pendingConfirm = null;
+    this.animateProjectsOnNextRender = true;
+    this.animateIdeasOnNextRender = true;
+    this.isLogVisible = true;
+    this.logFilterValue = "";
 
     const initialTheme = this.themeService.init();
     this.updateThemeLabel(initialTheme);
     this.background.updatePalette();
+    this.applyLogVisibility();
 
     this.bindEvents();
     this.render();
@@ -430,12 +540,50 @@ class ProjectIdeaUI {
       const name = this.projectNameInput.value.trim();
       if (!name) return;
       const project = this.service.createProject(name);
+      this.animateProjectsOnNextRender = true;
       this.projectNameInput.value = "";
       this.activeProjectId = project.id;
       this.render();
     });
 
     this.projectsList.addEventListener("click", (event) => {
+      const actionButton = event.target.closest("button[data-action]");
+      if (actionButton) {
+        const card = actionButton.closest(".project-card");
+        if (!card) return;
+        const projectId = card.dataset.id;
+        const action = actionButton.dataset.action;
+
+        if (action === "edit-project") {
+          const project = this.service.findProject(projectId);
+          this.openEditDialog({
+            mode: "project",
+            id: project.id,
+            text: project.name,
+            title: "Edit project",
+            maxLength: 50,
+          });
+          return;
+        }
+        if (action === "delete-project") {
+          const project = this.service.findProject(projectId);
+          this.openConfirmDialog({
+            title: "Delete project",
+            message: `Delete "${project.name}"?`,
+            confirmText: "Delete project",
+            onConfirm: () => {
+              this.service.deleteProject(projectId);
+              this.animateProjectsOnNextRender = true;
+              if (this.activeProjectId === projectId) {
+                this.activeProjectId = this.service.getProjects()[0]?.id || null;
+              }
+              this.render();
+            },
+          });
+        }
+        return;
+      }
+
       const card = event.target.closest(".project-card");
       if (!card) return;
       this.activeProjectId = card.dataset.id;
@@ -477,6 +625,7 @@ class ProjectIdeaUI {
       const text = this.ideaTextInput.value.trim();
       if (!text) return;
       this.service.addIdea(this.activeProjectId, text);
+      this.animateIdeasOnNextRender = true;
       this.ideaTextInput.value = "";
       this.render();
     });
@@ -488,33 +637,43 @@ class ProjectIdeaUI {
       if (!ideaId) return;
       const action = button.dataset.action;
 
-      if (action === "up") {
-        this.service.moveIdea(this.activeProjectId, ideaId, -1);
+      if (action === "toggle") {
+        this.service.toggleIdea(this.activeProjectId, ideaId);
+        this.animateIdeasOnNextRender = false;
+        this.render();
+        return;
       }
-      if (action === "down") {
-        this.service.moveIdea(this.activeProjectId, ideaId, 1);
+      if (action === "copy") {
+        const idea = this.service.findIdea(this.activeProjectId, ideaId);
+        this.copyIdeaText(idea.text);
+        return;
       }
       if (action === "edit") {
         const idea = this.service.findIdea(this.activeProjectId, ideaId);
-        this.openEditDialog(idea);
+          this.openEditDialog({
+            mode: "idea",
+            id: idea.id,
+            text: idea.text,
+            title: "Edit idea",
+            maxLength: 160,
+          });
         return;
       }
       if (action === "delete") {
         const idea = this.service.findIdea(this.activeProjectId, ideaId);
-        const ok = window.confirm(`Delete \"${idea.text}\"?`);
-        if (!ok) return;
-        this.service.deleteIdea(this.activeProjectId, ideaId);
+        this.openConfirmDialog({
+          title: "Delete idea",
+          message: `Delete "${idea.text}"?`,
+          confirmText: "Delete idea",
+          onConfirm: () => {
+            this.service.deleteIdea(this.activeProjectId, ideaId);
+            this.animateIdeasOnNextRender = true;
+            this.render();
+          },
+        });
+        return;
       }
 
-      this.render();
-    });
-
-    this.ideasList.addEventListener("change", (event) => {
-      const checkbox = event.target.closest("input[type='checkbox']");
-      if (!checkbox || !this.activeProjectId) return;
-      const ideaId = checkbox.closest("li")?.dataset.id;
-      if (!ideaId) return;
-      this.service.toggleIdea(this.activeProjectId, ideaId);
       this.render();
     });
 
@@ -553,14 +712,34 @@ class ProjectIdeaUI {
       this.background.updatePalette();
     });
 
+    this.logToggle.addEventListener("click", () => {
+      this.isLogVisible = !this.isLogVisible;
+      this.applyLogVisibility();
+    });
+
+    this.logFilter.addEventListener("input", (event) => {
+      this.logFilterValue = event.target.value.trim().toLowerCase();
+      this.renderLog();
+    });
+
     this.editForm.addEventListener("submit", (event) => {
       event.preventDefault();
       const text = this.editInput.value.trim();
-      if (!text || !this.activeProjectId || !this.editingIdeaId) {
+      if (!text) {
         this.closeEditDialog();
         return;
       }
-      this.service.updateIdeaText(this.activeProjectId, this.editingIdeaId, text);
+
+      if (this.editingMode === "idea" && this.activeProjectId && this.editingIdeaId) {
+        this.service.updateIdeaText(this.activeProjectId, this.editingIdeaId, text);
+        this.animateIdeasOnNextRender = true;
+      }
+
+      if (this.editingMode === "project" && this.editingProjectId) {
+        this.service.updateProjectName(this.editingProjectId, text);
+        this.animateProjectsOnNextRender = true;
+      }
+
       this.closeEditDialog();
       this.render();
     });
@@ -574,27 +753,76 @@ class ProjectIdeaUI {
         this.closeEditDialog();
       }
     });
+
+    this.confirmForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      if (this.pendingConfirm) {
+        this.pendingConfirm();
+      }
+      this.closeConfirmDialog();
+    });
+
+    this.confirmCancel.addEventListener("click", () => {
+      this.closeConfirmDialog();
+    });
+
+    this.confirmDialog.addEventListener("click", (event) => {
+      if (event.target === this.confirmDialog) {
+        this.closeConfirmDialog();
+      }
+    });
   }
 
   updateThemeLabel(theme) {
-    this.themeToggle.textContent = theme === "dark" ? "Light mode" : "Dark mode";
+    const label = theme === "dark" ? "Light mode" : "Dark mode";
+    const icon = theme === "dark" ? ICONS.sun : ICONS.moon;
+    this.themeToggle.innerHTML = `${icon}<span class="sr-only">${label}</span>`;
+    this.themeToggle.setAttribute("aria-label", label);
+    this.themeToggle.title = label;
   }
 
-  openEditDialog(idea) {
-    if (!idea) return;
-    this.editingIdeaId = idea.id;
-    this.editInput.value = idea.text;
+  updateLogToggleLabel() {
+    const label = this.isLogVisible ? "Hide log" : "Show log";
+    const icon = this.isLogVisible ? ICONS.logOff : ICONS.log;
+    this.logToggle.innerHTML = `${icon}<span class="sr-only">${label}</span>`;
+    this.logToggle.setAttribute("aria-label", label);
+    this.logToggle.setAttribute("aria-pressed", this.isLogVisible);
+    this.logToggle.title = label;
+  }
+
+  applyLogVisibility() {
+    this.logPanel.classList.toggle("is-hidden", !this.isLogVisible);
+    this.workspace.classList.toggle("log-hidden", !this.isLogVisible);
+    this.updateLogToggleLabel();
+  }
+
+  openEditDialog({ mode, id, text, title, maxLength }) {
+    if (!id) return;
+    this.editingMode = mode;
+    this.editingIdeaId = mode === "idea" ? id : null;
+    this.editingProjectId = mode === "project" ? id : null;
+    this.editTitle.textContent = title;
+    this.editInput.value = text;
+    this.editInput.maxLength = maxLength || 80;
 
     if (typeof this.editDialog.showModal === "function") {
       this.editDialog.showModal();
       this.editInput.focus();
       this.editInput.select();
     } else {
-      const nextText = window.prompt("Edit idea", idea.text);
+      const nextText = window.prompt(title, text);
       if (nextText !== null && nextText.trim()) {
-        this.service.updateIdeaText(this.activeProjectId, idea.id, nextText);
+        if (mode === "idea" && this.activeProjectId) {
+          this.service.updateIdeaText(this.activeProjectId, id, nextText);
+          this.animateIdeasOnNextRender = true;
+        }
+        if (mode === "project") {
+          this.service.updateProjectName(id, nextText);
+          this.animateProjectsOnNextRender = true;
+        }
         this.render();
       }
+      this.closeEditDialog();
     }
   }
 
@@ -602,7 +830,62 @@ class ProjectIdeaUI {
     if (this.editDialog.open) {
       this.editDialog.close();
     }
+    this.editingMode = null;
     this.editingIdeaId = null;
+    this.editingProjectId = null;
+    this.editTitle.textContent = "Edit idea";
+    this.editInput.value = "";
+  }
+
+  openConfirmDialog({ title, message, confirmText, onConfirm }) {
+    this.confirmTitle.textContent = title;
+    this.confirmMessage.textContent = message;
+    this.confirmConfirm.textContent = confirmText || "Delete";
+    this.pendingConfirm = onConfirm;
+
+    if (typeof this.confirmDialog.showModal === "function") {
+      this.confirmDialog.showModal();
+    } else {
+      this.confirmDialog.setAttribute("open", "true");
+    }
+  }
+
+  closeConfirmDialog() {
+    if (this.confirmDialog.open) {
+      this.confirmDialog.close();
+    } else {
+      this.confirmDialog.removeAttribute("open");
+    }
+    this.pendingConfirm = null;
+    this.confirmTitle.textContent = "Delete";
+    this.confirmMessage.textContent = "";
+    this.confirmConfirm.textContent = "Delete";
+  }
+
+  copyIdeaText(text) {
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).catch(() => {
+        this.copyIdeaTextFallback(text);
+      });
+      return;
+    }
+    this.copyIdeaTextFallback(text);
+  }
+
+  copyIdeaTextFallback(text) {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.style.position = "fixed";
+    textarea.style.left = "-9999px";
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    try {
+      document.execCommand("copy");
+    } catch (error) {
+      console.warn("Copy failed", error);
+    }
+    document.body.removeChild(textarea);
   }
 
   render() {
@@ -614,6 +897,8 @@ class ProjectIdeaUI {
   renderProjects() {
     const projects = this.service.getProjects();
     this.projectsList.innerHTML = "";
+    const shouldAnimate = this.animateProjectsOnNextRender;
+    this.animateProjectsOnNextRender = false;
 
     if (projects.length === 0) {
       const empty = document.createElement("div");
@@ -623,17 +908,32 @@ class ProjectIdeaUI {
       return;
     }
 
-    projects.forEach((project) => {
+    projects.forEach((project, index) => {
       const stats = project.stats();
       const card = document.createElement("div");
-      card.className = "project-card";
+      card.className = shouldAnimate ? "project-card fade-in" : "project-card";
+      if (shouldAnimate) {
+        card.style.setProperty("--fade-delay", `${index * 40}ms`);
+      }
       card.draggable = true;
       if (project.id === this.activeProjectId) {
         card.classList.add("active");
       }
       card.dataset.id = project.id;
       card.innerHTML = `
-        <h3>${escapeHtml(project.name)}</h3>
+        <div class="project-card-header">
+          <h3>${escapeHtml(project.name)}</h3>
+          <div class="project-actions">
+            <button class="icon-button" type="button" data-action="edit-project" aria-label="Edit project" title="Edit project">
+              ${ICONS.edit}
+              <span class="sr-only">Edit</span>
+            </button>
+            <button class="icon-button" type="button" data-action="delete-project" aria-label="Delete project" title="Delete project">
+              ${ICONS.trash}
+              <span class="sr-only">Delete</span>
+            </button>
+          </div>
+        </div>
         <div class="project-meta">
           <span>${stats.done}/${stats.total} complete</span>
           <span>${stats.percent}%</span>
@@ -650,6 +950,8 @@ class ProjectIdeaUI {
     const project = this.activeProjectId
       ? this.service.getProjects().find((item) => item.id === this.activeProjectId)
       : null;
+    const shouldAnimate = this.animateIdeasOnNextRender;
+    this.animateIdeasOnNextRender = false;
 
     if (!project) {
       this.activeProjectName.textContent = "Select a project";
@@ -679,24 +981,40 @@ class ProjectIdeaUI {
 
     project.ideas.forEach((idea, index) => {
       const item = document.createElement("li");
-      item.className = "idea-item";
+      item.className = shouldAnimate ? "idea-item fade-in" : "idea-item";
+      if (shouldAnimate) {
+        item.style.setProperty("--fade-delay", `${index * 30}ms`);
+      }
       item.draggable = true;
       if (idea.done) item.classList.add("completed");
       item.dataset.id = idea.id;
       const finishedLabel = idea.done && idea.finishedAt ? formatDate(idea.finishedAt) : "";
       const createdLabel = formatDate(idea.createdAt);
+      const toggleLabel = idea.done ? "Mark active" : "Mark complete";
+      const toggleIcon = idea.done ? ICONS.checkCircle : ICONS.circle;
       item.innerHTML = `
-        <input type="checkbox" ${idea.done ? "checked" : ""} />
         <span class="idea-text">
           <span class="idea-title">${escapeHtml(idea.text)}</span>
           <small>Created ${createdLabel}</small>
           ${finishedLabel ? `<small>Finished ${finishedLabel}</small>` : ""}
         </span>
         <div class="idea-actions">
-          <button class="icon-button" data-action="up" ${index === 0 ? "disabled" : ""}>↑</button>
-          <button class="icon-button" data-action="down" ${index === project.ideas.length - 1 ? "disabled" : ""}>↓</button>
-          <button class="icon-button" data-action="edit">Edit</button>
-          <button class="icon-button" data-action="delete">Delete</button>
+          <button class="icon-button toggle-button" type="button" data-action="toggle" aria-pressed="${idea.done}" aria-label="${toggleLabel}" title="${toggleLabel}">
+            ${toggleIcon}
+            <span class="sr-only">${toggleLabel}</span>
+          </button>
+          <button class="icon-button" type="button" data-action="copy" aria-label="Copy idea" title="Copy idea">
+            ${ICONS.copy}
+            <span class="sr-only">Copy</span>
+          </button>
+          <button class="icon-button" type="button" data-action="edit" aria-label="Edit idea" title="Edit idea">
+            ${ICONS.edit}
+            <span class="sr-only">Edit</span>
+          </button>
+          <button class="icon-button" type="button" data-action="delete" aria-label="Delete idea" title="Delete idea">
+            ${ICONS.trash}
+            <span class="sr-only">Delete</span>
+          </button>
         </div>
       `;
       this.ideasList.appendChild(item);
@@ -706,19 +1024,28 @@ class ProjectIdeaUI {
   renderLog() {
     const entries = this.service.getFinishedLog();
     this.logList.innerHTML = "";
+    const query = this.logFilterValue;
+    const filteredEntries = query
+      ? entries.filter(({ projectName, idea }) => {
+          const haystack = `${projectName} ${idea.text}`.toLowerCase();
+          return haystack.includes(query);
+        })
+      : entries;
+    const visibleEntries = filteredEntries.slice(0, 10);
 
-    if (entries.length === 0) {
+    if (visibleEntries.length === 0) {
       this.logEmpty.style.display = "block";
       return;
     }
 
     this.logEmpty.style.display = "none";
-    entries.forEach(({ projectName, idea }) => {
+    visibleEntries.forEach(({ projectName, idea }) => {
       const item = document.createElement("li");
       item.className = "log-item";
       item.innerHTML = `
         <span>${escapeHtml(idea.text)}</span>
-        <small>${escapeHtml(projectName)} · Finished ${formatDate(idea.finishedAt)}</small>
+        <small>Finished ${formatDate(idea.finishedAt)}</small>
+        <small>${escapeHtml(projectName)}</small>
       `;
       this.logList.appendChild(item);
     });
