@@ -940,6 +940,10 @@ class ProjectIdeaUI {
 
     projects.forEach((project, index) => {
       const stats = project.stats();
+      const hasOpenIdeas = stats.total > 0 && stats.done < stats.total;
+      const liveIndicator = hasOpenIdeas
+        ? '<span class="project-live" aria-hidden="true"></span>'
+        : "";
       const card = document.createElement("div");
       card.className = shouldAnimate ? "project-card fade-in" : "project-card";
       if (shouldAnimate) {
@@ -952,7 +956,10 @@ class ProjectIdeaUI {
       card.dataset.id = project.id;
       card.innerHTML = `
         <div class="project-card-header">
-          <h3>${escapeHtml(project.name)}</h3>
+          <div class="project-title-row">
+            <h3>${escapeHtml(project.name)}</h3>
+            ${liveIndicator}
+          </div>
           <div class="project-actions">
             <button class="icon-button" type="button" data-action="edit-project" aria-label="Edit project" title="Edit project">
               ${ICONS.edit}
@@ -1080,12 +1087,10 @@ class ProjectIdeaUI {
         <span>${escapeHtml(idea.text)}</span>
         <small>Finished ${formatDate(idea.finishedAt)}</small>
         <small>${escapeHtml(projectName)}</small>
-        <div class="log-actions">
-          <button class="icon-button" type="button" data-action="reopen" aria-label="Reopen idea" title="Reopen idea">
-            ${ICONS.reopen}
-            <span class="sr-only">Reopen</span>
-          </button>
-        </div>
+        <button class="icon-button log-reopen" type="button" data-action="reopen" aria-label="Reopen idea" title="Reopen idea">
+          ${ICONS.reopen}
+          <span class="sr-only">Reopen</span>
+        </button>
       `;
       this.logList.appendChild(item);
     });

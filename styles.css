@@ -280,6 +280,22 @@ button:hover {
   gap: 10px;
 }
 
+.project-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.project-live {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0;
+  transform: scale(0.8);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
 .project-actions {
   display: flex;
   gap: 6px;
@@ -298,6 +314,24 @@ button:hover {
   border-color: rgba(31, 138, 112, 0.6);
   background: var(--surface);
   transform: translateY(-2px);
+}
+
+.project-card.active .project-live {
+  opacity: 1;
+  transform: scale(1);
+  animation: projectPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes projectPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(31, 138, 112, 0.45);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(31, 138, 112, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(31, 138, 112, 0);
+  }
 }
 
 .project-card:hover .project-actions,
@@ -450,7 +484,7 @@ button:hover {
 }
 
 .log-item {
-  padding: 14px 48px 38px 16px;
+  padding: 14px 44px 14px 16px;
   border-radius: 16px;
   border: 1px solid var(--border);
   background: var(--surface-2);
@@ -468,20 +502,18 @@ button:hover {
   font-size: 11px;
 }
 
-.log-actions {
+.log-reopen {
   position: absolute;
   right: 12px;
   bottom: 12px;
-  display: flex;
-  gap: 6px;
   opacity: 0;
   pointer-events: none;
   transform: translateY(-2px);
   transition: opacity 0.2s ease, transform 0.2s ease;
 }
 
-.log-item:hover .log-actions,
-.log-item:focus-within .log-actions {
+.log-item:hover .log-reopen,
+.log-item:focus-within .log-reopen {
   opacity: 1;
   pointer-events: auto;
   transform: translateY(0);
