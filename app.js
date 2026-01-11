@@ -1,5 +1,6 @@
 const STORAGE_KEY = "project-idea-collection.v1";
 const THEME_KEY = "project-idea-collection.theme";
+const UI_STATE_KEY = "project-idea-collection.ui";
 
 const createId = () => {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
@@ -460,11 +461,11 @@ class PolyBackground {
   }
 
   createPoints() {
-    this.points = Array.from({ length: 36 }, () => ({
+    this.points = Array.from({ length: 48 }, () => ({
       x: Math.random() * this.width,
       y: Math.random() * this.height,
-      vx: (Math.random() - 0.5) * 0.24,
-      vy: (Math.random() - 0.5) * 0.24,
+      vx: (Math.random() - 0.5) * 0.32,
+      vy: (Math.random() - 0.5) * 0.32,
       phase: Math.random() * Math.PI * 2,
     }));
   }
@@ -518,8 +519,8 @@ class PolyBackground {
 
   updatePoints(now) {
     this.points.forEach((point) => {
-      point.vx += Math.sin(now / 1800 + point.phase) * 0.012;
-      point.vy += Math.cos(now / 1700 + point.phase) * 0.012;
+      point.vx += Math.sin(now / 1800 + point.phase) * 0.018;
+      point.vy += Math.cos(now / 1700 + point.phase) * 0.018;
       point.vx *= 0.965;
       point.vy *= 0.965;
       point.x += point.vx;
@@ -531,8 +532,8 @@ class PolyBackground {
   }
 
   drawNetwork(now) {
-    const maxDistance = 170;
-    const scale = 0.7 + ((Math.sin(now / 4500) + 1) / 2) * 0.5;
+    const maxDistance = 210;
+    const scale = 0.72 + ((Math.sin(now / 4500) + 1) / 2) * 0.56;
     const centerX = this.width / 2 + this.motion.offsetX;
     const centerY = this.height / 2 + this.motion.offsetY;
     this.ctx.save();
@@ -545,11 +546,11 @@ class PolyBackground {
         const dy = this.points[i].y - this.points[j].y;
         const dist = Math.hypot(dx, dy);
         if (dist < maxDistance) {
-          const alpha = (1 - dist / maxDistance) * 0.45;
+          const alpha = (1 - dist / maxDistance) * 0.7;
           this.ctx.strokeStyle = `${this.palette.line}${Math.round(alpha * 255)
             .toString(16)
             .padStart(2, "0")}`;
-          this.ctx.lineWidth = 1.2;
+          this.ctx.lineWidth = 1.4;
           this.ctx.beginPath();
           this.ctx.moveTo(this.points[i].x, this.points[i].y);
           this.ctx.lineTo(this.points[j].x, this.points[j].y);
@@ -568,8 +569,11 @@ class ProjectIdeaUI {
     this.service = service;
     this.themeService = themeService;
     this.background = background;
-    this.activeProjectId = service.getProjects()[0]?.id || null;
     this.dragState = { type: null, id: null };
+    const uiState = this.loadUiState();
+    this.isLogVisible =
+      typeof uiState.isLogVisible === "boolean" ? uiState.isLogVisible : true;
+    this.activeProjectId = this.resolveActiveProjectId(uiState.activeProjectId);
 
     this.projectsList = document.getElementById("projectsList");
     this.projectForm = document.getElementById("projectForm");
@@ -613,19 +617,66 @@ class ProjectIdeaUI {
     this.pendingConfirm = null;
     this.animateProjectsOnNextRender = true;
     this.animateIdeasOnNextRender = true;
-    this.isLogVisible = true;
     this.logFilterValue = "";
     this.logProjectFilterValue = "all";
-    this.ideaFilter = "todo";
+    this.ideaFilter = this.resolveIdeaFilter(uiState.ideaFilter);
 
     const initialTheme = this.themeService.init();
     this.updateThemeLabel(initialTheme);
     this.background.updatePalette();
     this.applyLogVisibility();
     this.updateDataButtons();
+    this.persistUiState();
 
     this.bindEvents();
     this.render();
+  }
+
+  loadUiState() {
+    const raw = localStorage.getItem(UI_STATE_KEY);
+    if (!raw) return {};
+    try {
+      return JSON.parse(raw);
+    } catch (error) {
+      console.warn("Failed to parse UI state", error);
+      return {};
+    }
+  }
+
+  resolveActiveProjectId(projectId) {
+    const projects = this.service.getProjects();
+    if (!projectId) return projects[0]?.id || null;
+    const matches = projects.some((project) => project.id === projectId);
+    return matches ? projectId : projects[0]?.id || null;
+  }
+
+  resolveIdeaFilter(filter) {
+    const allowed = ["todo", "done", "all"];
+    return allowed.includes(filter) ? filter : "todo";
+  }
+
+  persistUiState() {
+    const payload = {
+      activeProjectId: this.activeProjectId,
+      isLogVisible: this.isLogVisible,
+      ideaFilter: this.ideaFilter,
+    };
+    localStorage.setItem(UI_STATE_KEY, JSON.stringify(payload));
+  }
+
+  setActiveProjectId(projectId) {
+    this.activeProjectId = projectId;
+    this.persistUiState();
+  }
+
+  setLogVisibility(isVisible) {
+    this.isLogVisible = isVisible;
+    this.persistUiState();
+  }
+
+  setIdeaFilter(filter) {
+    this.ideaFilter = this.resolveIdeaFilter(filter);
+    this.persistUiState();
   }
 
   bindEvents() {
@@ -638,7 +689,7 @@ class ProjectIdeaUI {
       this.animateProjectsOnNextRender = true;
       this.projectNameInput.value = "";
       this.projectDescriptionInput.value = "";
-      this.activeProjectId = project.id;
+      this.setActiveProjectId(project.id);
       this.render();
     });
 
@@ -672,7 +723,9 @@ class ProjectIdeaUI {
               this.service.deleteProject(projectId);
               this.animateProjectsOnNextRender = true;
               if (this.activeProjectId === projectId) {
-                this.activeProjectId = this.service.getProjects()[0]?.id || null;
+                this.setActiveProjectId(
+                  this.service.getProjects()[0]?.id || null
+                );
               }
               this.render();
             },
@@ -683,7 +736,7 @@ class ProjectIdeaUI {
 
       const card = event.target.closest(".project-card");
       if (!card) return;
-      this.activeProjectId = card.dataset.id;
+      this.setActiveProjectId(card.dataset.id);
       this.render();
     });
 
@@ -730,7 +783,7 @@ class ProjectIdeaUI {
     this.ideaTabs.addEventListener("click", (event) => {
       const button = event.target.closest("button[data-filter]");
       if (!button) return;
-      this.ideaFilter = button.dataset.filter || "todo";
+      this.setIdeaFilter(button.dataset.filter);
       this.renderIdeas();
     });
 
@@ -859,7 +912,7 @@ class ProjectIdeaUI {
     });
 
     this.logToggle.addEventListener("click", () => {
-      this.isLogVisible = !this.isLogVisible;
+      this.setLogVisibility(!this.isLogVisible);
       this.applyLogVisibility();
     });
 
@@ -988,8 +1041,7 @@ class ProjectIdeaUI {
   applyImport(payload) {
     try {
       this.service.importProjects(payload);
-      this.activeProjectId = this.service.getProjects()[0]?.id || null;
-      this.ideaFilter = "todo";
+      this.setActiveProjectId(this.service.getProjects()[0]?.id || null);
       this.animateProjectsOnNextRender = true;
       this.animateIdeasOnNextRender = true;
       this.render();
@@ -1233,7 +1285,6 @@ class ProjectIdeaUI {
       this.ideaTabs.classList.add("hidden");
       this.ideasList.innerHTML = "";
       this.ideasEmpty.style.display = "block";
-      this.ideaFilter = "todo";
       return;
     }
 
