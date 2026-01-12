@@ -589,6 +589,20 @@ class ProjectIdeaUI {
     this.logToggle = document.getElementById("logToggle");
     this.workspace = document.querySelector(".workspace");
     this.logPanel = document.querySelector(".log-panel");
+    this.logViewAll = document.getElementById("logViewAll");
+    this.logDialog = document.getElementById("logDialog");
+    this.logDialogClose = document.getElementById("logDialogClose");
+    this.logDialogSearch = document.getElementById("logDialogSearch");
+    this.logDialogProjectFilter = document.getElementById(
+      "logDialogProjectFilter"
+    );
+    this.logDialogStart = document.getElementById("logDialogStart");
+    this.logDialogEnd = document.getElementById("logDialogEnd");
+    this.logDialogScroll = document.getElementById("logDialogScroll");
+    this.logDialogList = document.getElementById("logDialogList");
+    this.logDialogEmpty = document.getElementById("logDialogEmpty");
+    this.logChartUnit = document.getElementById("logChartUnit");
+    this.logChart = document.getElementById("logChart");
 
     this.ideaForm = document.getElementById("ideaForm");
     this.ideaTextInput = document.getElementById("ideaText");
@@ -620,6 +634,12 @@ class ProjectIdeaUI {
     this.logFilterValue = "";
     this.logProjectFilterValue = "all";
     this.ideaFilter = this.resolveIdeaFilter(uiState.ideaFilter);
+    this.logDialogEntries = [];
+    this.logDialogRenderedCount = 0;
+    this.logDialogBatchSize = 24;
+    this.logDialogChartUnit = this.logChartUnit?.value || "month";
+    this.logDialogRangeStart = null;
+    this.logDialogRangeEnd = null;
 
     const initialTheme = this.themeService.init();
     this.updateThemeLabel(initialTheme);
@@ -677,6 +697,343 @@ class ProjectIdeaUI {
   setIdeaFilter(filter) {
     this.ideaFilter = this.resolveIdeaFilter(filter);
     this.persistUiState();
+  }
+
+  openLogDialog() {
+    this.updateLogDialogProjectFilter();
+    this.applyLogDialogFilters();
+    if (typeof this.logDialog.showModal === "function") {
+      this.logDialog.showModal();
+    } else {
+      this.logDialog.setAttribute("open", "true");
+    }
+    requestAnimationFrame(() => {
+      this.resizeLogChart();
+      this.renderLogDialogChart();
+    });
+  }
+
+  closeLogDialog() {
+    if (this.logDialog.open) {
+      this.logDialog.close();
+    } else {
+      this.logDialog.removeAttribute("open");
+    }
+  }
+
+  updateLogDialogProjectFilter() {
+    const projects = this.service.getProjects();
+    const previous = this.logDialogProjectFilter.value || "all";
+    this.logDialogProjectFilter.innerHTML = `<option value="all">All projects</option>`;
+    projects.forEach((project) => {
+      const option = document.createElement("option");
+      option.value = project.id;
+      option.textContent = project.name;
+      this.logDialogProjectFilter.appendChild(option);
+    });
+    const hasPrevious =
+      previous !== "all" &&
+      projects.some((project) => project.id === previous);
+    this.logDialogProjectFilter.value = hasPrevious ? previous : "all";
+  }
+
+  parseDateInput(value, endOfDay = false) {
+    if (!value) return null;
+    const [year, month, day] = value.split("-").map(Number);
+    if (!year || !month || !day) return null;
+    return new Date(
+      year,
+      month - 1,
+      day,
+      endOfDay ? 23 : 0,
+      endOfDay ? 59 : 0,
+      endOfDay ? 59 : 0,
+      endOfDay ? 999 : 0
+    );
+  }
+
+  applyLogDialogFilters() {
+    const entries = this.service.getFinishedLog();
+    const query = this.logDialogSearch.value.trim().toLowerCase();
+    const projectFilter = this.logDialogProjectFilter.value;
+    let start = this.parseDateInput(this.logDialogStart.value);
+    let end = this.parseDateInput(this.logDialogEnd.value, true);
+    if (start && end && start > end) {
+      [start, end] = [end, start];
+    }
+
+    this.logDialogEntries = entries.filter(({ projectId, projectName, idea }) => {
+      if (projectFilter !== "all" && projectId !== projectFilter) {
+        return false;
+      }
+      if (query) {
+        const haystack = `${projectName} ${idea.text}`.toLowerCase();
+        if (!haystack.includes(query)) return false;
+      }
+      const finishedAt = new Date(idea.finishedAt);
+      if (Number.isNaN(finishedAt.getTime())) return false;
+      if (start && finishedAt < start) return false;
+      if (end && finishedAt > end) return false;
+      return true;
+    });
+    this.logDialogRangeStart = start;
+    this.logDialogRangeEnd = end;
+
+    this.logDialogRenderedCount = 0;
+    this.logDialogList.innerHTML = "";
+    this.logDialogScroll.scrollTop = 0;
+    this.renderMoreLogDialogItems();
+    this.updateLogDialogEmptyState();
+    this.renderLogDialogChart();
+  }
+
+  updateLogDialogEmptyState() {
+    const isEmpty = this.logDialogEntries.length === 0;
+    this.logDialogEmpty.style.display = isEmpty ? "block" : "none";
+  }
+
+  renderMoreLogDialogItems() {
+    const nextEntries = this.logDialogEntries.slice(
+      this.logDialogRenderedCount,
+      this.logDialogRenderedCount + this.logDialogBatchSize
+    );
+    if (nextEntries.length === 0) return;
+    nextEntries.forEach(({ projectId, projectName, idea }) => {
+      const item = document.createElement("li");
+      item.className = "log-item";
+      item.dataset.projectId = projectId;
+      item.dataset.ideaId = idea.id;
+      item.innerHTML = `
+        <span>${escapeHtml(idea.text)}</span>
+        <small>Finished ${formatDate(idea.finishedAt)}</small>
+        <small>${escapeHtml(projectName)}</small>
+        <button class="icon-button log-reopen" type="button" data-action="reopen" aria-label="Reopen idea" title="Reopen idea">
+          ${ICONS.reopen}
+          <span class="sr-only">Reopen</span>
+        </button>
+      `;
+      this.logDialogList.appendChild(item);
+    });
+    this.logDialogRenderedCount += nextEntries.length;
+  }
+
+  handleLogDialogScroll() {
+    if (this.logDialogRenderedCount >= this.logDialogEntries.length) return;
+    const { scrollTop, clientHeight, scrollHeight } = this.logDialogScroll;
+    if (scrollTop + clientHeight >= scrollHeight - 60) {
+      this.renderMoreLogDialogItems();
+    }
+  }
+
+  getWeekNumber(date) {
+    const target = new Date(
+      Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())
+    );
+    const dayNum = target.getUTCDay() || 7;
+    target.setUTCDate(target.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(target.getUTCFullYear(), 0, 1));
+    const week = Math.ceil(((target - yearStart) / 86400000 + 1) / 7);
+    return { year: target.getUTCFullYear(), week };
+  }
+
+  getBucketStart(date, unit) {
+    const start = new Date(date);
+    if (unit === "day") {
+      start.setHours(0, 0, 0, 0);
+      return start;
+    }
+    if (unit === "week") {
+      const day = start.getDay();
+      const diff = (day + 6) % 7;
+      start.setDate(start.getDate() - diff);
+      start.setHours(0, 0, 0, 0);
+      return start;
+    }
+    if (unit === "month") {
+      return new Date(start.getFullYear(), start.getMonth(), 1);
+    }
+    return new Date(start.getFullYear(), 0, 1);
+  }
+
+  formatBucketLabel(date, unit) {
+    const pad2 = (value) => String(value).padStart(2, "0");
+    if (unit === "day") {
+      return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(
+        date.getDate()
+      )}`;
+    }
+    if (unit === "week") {
+      const { year, week } = this.getWeekNumber(date);
+      return `${year} W${pad2(week)}`;
+    }
+    if (unit === "month") {
+      return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}`;
+    }
+    return `${date.getFullYear()}`;
+  }
+
+  buildLogDialogBuckets(entries, unit) {
+    const buckets = new Map();
+    entries.forEach(({ idea }) => {
+      const finishedAt = new Date(idea.finishedAt);
+      if (Number.isNaN(finishedAt.getTime())) return;
+      const start = this.getBucketStart(finishedAt, unit);
+      const key = start.getTime();
+      const existing = buckets.get(key);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        buckets.set(key, {
+          label: this.formatBucketLabel(start, unit),
+          count: 1,
+        });
+      }
+    });
+    return Array.from(buckets.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([, value]) => value);
+  }
+
+  getChartEndDate() {
+    if (this.logDialogRangeEnd) return this.logDialogRangeEnd;
+    if (this.logDialogEntries.length > 0) {
+      const latest = this.logDialogEntries.reduce((max, { idea }) => {
+        const finishedAt = new Date(idea.finishedAt).getTime();
+        if (Number.isNaN(finishedAt)) return max;
+        return Math.max(max, finishedAt);
+      }, 0);
+      if (latest) return new Date(latest);
+    }
+    return new Date();
+  }
+
+  buildLogDialogBucketsWindow(entries, unit, endDate) {
+    const counts = new Map();
+    entries.forEach(({ idea }) => {
+      const finishedAt = new Date(idea.finishedAt);
+      if (Number.isNaN(finishedAt.getTime())) return;
+      const start = this.getBucketStart(finishedAt, unit);
+      const key = start.getTime();
+      counts.set(key, (counts.get(key) || 0) + 1);
+    });
+
+    const windowSizes = {
+      day: 7,
+      week: 4,
+      month: 6,
+      year: 3,
+    };
+    const total = windowSizes[unit] || 6;
+    const endStart = this.getBucketStart(endDate, unit);
+    const buckets = [];
+    for (let index = 0; index < total; index += 1) {
+      const offset = total - 1 - index;
+      let start;
+      if (unit === "day") {
+        start = new Date(endStart);
+        start.setDate(start.getDate() - offset);
+      } else if (unit === "week") {
+        start = new Date(endStart);
+        start.setDate(start.getDate() - offset * 7);
+      } else if (unit === "month") {
+        start = new Date(endStart.getFullYear(), endStart.getMonth(), 1);
+        start.setMonth(start.getMonth() - offset);
+      } else {
+        start = new Date(endStart.getFullYear() - offset, 0, 1);
+      }
+      const key = start.getTime();
+      buckets.push({
+        label: this.formatBucketLabel(start, unit),
+        count: counts.get(key) || 0,
+      });
+    }
+    return buckets;
+  }
+
+  resizeLogChart() {
+    if (!this.logChart) return;
+    const rect = this.logChart.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const ratio = window.devicePixelRatio || 1;
+    this.logChart.width = rect.width * ratio;
+    this.logChart.height = rect.height * ratio;
+    const ctx = this.logChart.getContext("2d");
+    if (ctx) {
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    }
+  }
+
+  renderLogDialogChart() {
+    if (!this.logChart) return;
+    const ctx = this.logChart.getContext("2d");
+    if (!ctx) return;
+    this.resizeLogChart();
+    const rect = this.logChart.getBoundingClientRect();
+    const width = rect.width;
+    const height = rect.height;
+    ctx.clearRect(0, 0, width, height);
+    if (width === 0 || height === 0) return;
+
+    const unit = this.logChartUnit.value || this.logDialogChartUnit;
+    const styles = getComputedStyle(document.documentElement);
+    const accent = styles.getPropertyValue("--accent").trim() || "#1f8a70";
+    const muted = styles.getPropertyValue("--muted").trim() || "#5b6473";
+    const border = styles.getPropertyValue("--border").trim() || "rgba(0, 0, 0, 0.08)";
+    const endDate = this.getChartEndDate();
+    const buckets = this.buildLogDialogBucketsWindow(
+      this.logDialogEntries,
+      unit,
+      endDate
+    );
+    if (this.logDialogEntries.length === 0) {
+      ctx.fillStyle = muted;
+      ctx.font = "12px Epilogue, sans-serif";
+      ctx.fillText("No data yet.", 12, 24);
+      return;
+    }
+    if (buckets.length === 0) {
+      ctx.fillStyle = muted;
+      ctx.font = "12px Epilogue, sans-serif";
+      ctx.fillText("No data yet.", 12, 24);
+      return;
+    }
+
+    const visible = buckets;
+    const maxValue = Math.max(...visible.map((item) => item.count), 1);
+    const paddingX = 12;
+    const paddingY = 20;
+    const chartHeight = height - paddingY * 2 - 16;
+    const chartWidth = width - paddingX * 2;
+    const barWidth = chartWidth / visible.length;
+    const baseY = paddingY + chartHeight;
+
+    ctx.strokeStyle = border;
+    ctx.beginPath();
+    ctx.moveTo(paddingX, baseY + 0.5);
+    ctx.lineTo(paddingX + chartWidth, baseY + 0.5);
+    ctx.stroke();
+
+    visible.forEach((item, index) => {
+      const valueHeight = (item.count / maxValue) * chartHeight;
+      const x = paddingX + index * barWidth;
+      const barPadding = Math.min(10, barWidth * 0.2);
+      ctx.fillStyle = accent;
+      ctx.fillRect(
+        x + barPadding,
+        baseY - valueHeight,
+        Math.max(4, barWidth - barPadding * 2),
+        valueHeight
+      );
+    });
+
+    const labelStep = Math.ceil(visible.length / 5);
+    ctx.fillStyle = muted;
+    ctx.font = "10px Epilogue, sans-serif";
+    visible.forEach((item, index) => {
+      if (index % labelStep !== 0) return;
+      const x = paddingX + index * barWidth + 4;
+      ctx.fillText(item.label, x, height - 6);
+    });
   }
 
   bindEvents() {
@@ -795,9 +1152,23 @@ class ProjectIdeaUI {
       const action = button.dataset.action;
 
       if (action === "toggle") {
-        this.service.toggleIdea(this.activeProjectId, ideaId);
-        this.animateIdeasOnNextRender = false;
-        this.render();
+        const idea = this.service.findIdea(this.activeProjectId, ideaId);
+        if (idea.done) {
+          this.openConfirmDialog({
+            title: "Reopen idea",
+            message: `Reopen "${idea.text}"?`,
+            confirmText: "Reopen idea",
+            onConfirm: () => {
+              this.service.toggleIdea(this.activeProjectId, ideaId);
+              this.animateIdeasOnNextRender = false;
+              this.render();
+            },
+          });
+        } else {
+          this.service.toggleIdea(this.activeProjectId, ideaId);
+          this.animateIdeasOnNextRender = false;
+          this.render();
+        }
         return;
       }
       if (action === "copy") {
@@ -914,6 +1285,77 @@ class ProjectIdeaUI {
     this.logToggle.addEventListener("click", () => {
       this.setLogVisibility(!this.isLogVisible);
       this.applyLogVisibility();
+    });
+
+    this.logViewAll.addEventListener("click", () => {
+      this.openLogDialog();
+    });
+
+    this.logDialogClose.addEventListener("click", () => {
+      this.closeLogDialog();
+    });
+
+    this.logDialog.addEventListener("click", (event) => {
+      if (event.target === this.logDialog) {
+        this.closeLogDialog();
+      }
+    });
+
+    this.logDialogSearch.addEventListener("input", () => {
+      this.applyLogDialogFilters();
+    });
+
+    this.logDialogProjectFilter.addEventListener("change", () => {
+      this.applyLogDialogFilters();
+    });
+
+    this.logDialogStart.addEventListener("change", () => {
+      this.applyLogDialogFilters();
+    });
+
+    this.logDialogEnd.addEventListener("change", () => {
+      this.applyLogDialogFilters();
+    });
+
+    this.logChartUnit.addEventListener("change", () => {
+      this.logDialogChartUnit = this.logChartUnit.value;
+      this.renderLogDialogChart();
+    });
+
+    this.logDialogScroll.addEventListener("scroll", () => {
+      this.handleLogDialogScroll();
+    });
+
+    this.logDialogList.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-action]");
+      if (!button) return;
+      const action = button.dataset.action;
+      if (action !== "reopen") return;
+      const item = button.closest(".log-item");
+      const projectId = item?.dataset.projectId;
+      const ideaId = item?.dataset.ideaId;
+      if (!projectId || !ideaId) return;
+      const idea = this.service.findIdea(projectId, ideaId);
+      this.openConfirmDialog({
+        title: "Reopen idea",
+        message: `Reopen "${idea.text}"?`,
+        confirmText: "Reopen idea",
+        onConfirm: () => {
+          this.service.toggleIdea(projectId, ideaId);
+          if (this.activeProjectId === projectId) {
+            this.animateIdeasOnNextRender = false;
+          }
+          this.applyLogDialogFilters();
+          this.render();
+        },
+      });
+    });
+
+    window.addEventListener("resize", () => {
+      if (this.logDialog.open || this.logDialog.hasAttribute("open")) {
+        this.resizeLogChart();
+        this.renderLogDialogChart();
+      }
     });
 
     this.logFilter.addEventListener("input", (event) => {
@@ -1377,7 +1819,10 @@ class ProjectIdeaUI {
       const haystack = `${projectName} ${idea.text}`.toLowerCase();
       return haystack.includes(query);
     });
-    const visibleEntries = filteredEntries.slice(0, 10);
+    const visibleEntries = filteredEntries.slice(0, 5);
+    const hasEntries = entries.length > 5;
+    this.logViewAll.disabled = !hasEntries;
+    this.logViewAll.classList.toggle("hidden", !hasEntries);
 
     if (visibleEntries.length === 0) {
       this.logEmpty.style.display = "block";

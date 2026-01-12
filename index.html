@@ -117,6 +117,9 @@
         </div>
         <!-- section finished idea list -->
         <ul id="logList" class="log-list"></ul>
+        <div class="log-view-all">
+          <button id="logViewAll" class="ghost" type="button">View all</button>
+        </div>
       </aside>
     </main>
   </div>
@@ -148,6 +151,65 @@
         <button id="confirmConfirm" class="primary" type="submit">Delete</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog id="logDialog" class="dialog">
+    <div class="dialog-card log-dialog-card">
+      <div class="log-dialog-header">
+        <div>
+          <p class="eyebrow">Finished ideas</p>
+          <h3>Management</h3>
+        </div>
+        <button id="logDialogClose" class="ghost" type="button">Close</button>
+      </div>
+      <div class="log-dialog-body">
+        <section class="log-dialog-left">
+          <div class="log-dialog-filters">
+            <label class="filter-group">
+              <span>Search</span>
+              <input
+                id="logDialogSearch"
+                type="text"
+                placeholder="Search ideas or projects..."
+              />
+            </label>
+            <label class="filter-group">
+              <span>Project</span>
+              <select id="logDialogProjectFilter" aria-label="Filter by project">
+                <option value="all">All projects</option>
+              </select>
+            </label>
+            <label class="filter-group">
+              <span>From</span>
+              <input id="logDialogStart" type="date" />
+            </label>
+            <label class="filter-group">
+              <span>To</span>
+              <input id="logDialogEnd" type="date" />
+            </label>
+          </div>
+          <div id="logDialogScroll" class="log-dialog-list">
+            <div id="logDialogEmpty" class="empty-state">
+              <p>No finished ideas yet.</p>
+            </div>
+            <ul id="logDialogList" class="log-list"></ul>
+          </div>
+        </section>
+        <aside class="log-dialog-chart">
+          <div class="chart-header">
+            <h4>Completions over time</h4>
+            <select id="logChartUnit" aria-label="Time unit">
+              <option value="day" selected>Day</option>
+              <option value="week">Week</option>
+              <option value="month">Month</option>
+              <option value="year">Year</option>
+            </select>
+          </div>
+          <canvas id="logChart" role="img" aria-label="Completed ideas chart"></canvas>
+          <p class="chart-note">Updates with your filters.</p>
+        </aside>
+      </div>
+    </div>
   </dialog>
 
   <script src="app.js"></script>
