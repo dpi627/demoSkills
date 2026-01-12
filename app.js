@@ -603,6 +603,7 @@ class ProjectIdeaUI {
     this.logDialogEmpty = document.getElementById("logDialogEmpty");
     this.logChartUnit = document.getElementById("logChartUnit");
     this.logChart = document.getElementById("logChart");
+    this.logChartNote = document.querySelector(".log-dialog-chart .chart-note");
 
     this.ideaForm = document.getElementById("ideaForm");
     this.ideaTextInput = document.getElementById("ideaText");
@@ -640,6 +641,8 @@ class ProjectIdeaUI {
     this.logDialogChartUnit = this.logChartUnit?.value || "month";
     this.logDialogRangeStart = null;
     this.logDialogRangeEnd = null;
+    this.logChartInstance = null;
+    this.logChartNoteBase = this.logChartNote?.textContent || "";
 
     const initialTheme = this.themeService.init();
     this.updateThemeLabel(initialTheme);
@@ -950,90 +953,136 @@ class ProjectIdeaUI {
     return buckets;
   }
 
+  getLogChartTheme() {
+    const styles = getComputedStyle(document.documentElement);
+    return {
+      accent: styles.getPropertyValue("--accent").trim() || "#1f8a70",
+      muted: styles.getPropertyValue("--muted").trim() || "#5b6473",
+      border:
+        styles.getPropertyValue("--border").trim() || "rgba(0, 0, 0, 0.08)",
+      surface: styles.getPropertyValue("--surface").trim() || "#ffffff",
+      ink: styles.getPropertyValue("--ink").trim() || "#0d1b2a",
+    };
+  }
+
+  updateLogChartNote(totalCount) {
+    if (!this.logChartNote) return;
+    if (totalCount === 0) {
+      this.logChartNote.textContent = "No data yet.";
+      return;
+    }
+    this.logChartNote.textContent = this.logChartNoteBase;
+  }
+
+  buildLogChartConfig(labels, data, theme) {
+    return {
+      type: "bar",
+      data: {
+        labels,
+        datasets: [
+          {
+            data,
+            backgroundColor: theme.accent,
+            borderRadius: 8,
+            borderSkipped: false,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: {
+          duration: 320,
+        },
+        scales: {
+          x: {
+            grid: {
+              display: false,
+            },
+            ticks: {
+              color: theme.muted,
+              font: {
+                size: 10,
+              },
+              maxTicksLimit: 6,
+            },
+          },
+          y: {
+            beginAtZero: true,
+            grid: {
+              color: theme.border,
+            },
+            ticks: {
+              color: theme.muted,
+              font: {
+                size: 10,
+              },
+              precision: 0,
+            },
+          },
+        },
+        plugins: {
+          legend: {
+            display: false,
+          },
+          tooltip: {
+            backgroundColor: theme.surface,
+            titleColor: theme.ink,
+            bodyColor: theme.ink,
+            borderColor: theme.border,
+            borderWidth: 1,
+            displayColors: false,
+          },
+        },
+      },
+    };
+  }
+
+  ensureLogChartInstance(labels, data, theme) {
+    if (!this.logChart || typeof Chart === "undefined") return null;
+    if (!this.logChartInstance) {
+      this.logChartInstance = new Chart(
+        this.logChart,
+        this.buildLogChartConfig(labels, data, theme)
+      );
+    }
+    return this.logChartInstance;
+  }
+
   resizeLogChart() {
-    if (!this.logChart) return;
-    const rect = this.logChart.getBoundingClientRect();
-    if (!rect.width || !rect.height) return;
-    const ratio = window.devicePixelRatio || 1;
-    this.logChart.width = rect.width * ratio;
-    this.logChart.height = rect.height * ratio;
-    const ctx = this.logChart.getContext("2d");
-    if (ctx) {
-      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    if (this.logChartInstance) {
+      this.logChartInstance.resize();
     }
   }
 
   renderLogDialogChart() {
-    if (!this.logChart) return;
-    const ctx = this.logChart.getContext("2d");
-    if (!ctx) return;
-    this.resizeLogChart();
-    const rect = this.logChart.getBoundingClientRect();
-    const width = rect.width;
-    const height = rect.height;
-    ctx.clearRect(0, 0, width, height);
-    if (width === 0 || height === 0) return;
-
-    const unit = this.logChartUnit.value || this.logDialogChartUnit;
-    const styles = getComputedStyle(document.documentElement);
-    const accent = styles.getPropertyValue("--accent").trim() || "#1f8a70";
-    const muted = styles.getPropertyValue("--muted").trim() || "#5b6473";
-    const border = styles.getPropertyValue("--border").trim() || "rgba(0, 0, 0, 0.08)";
+    if (!this.logChart || typeof Chart === "undefined") return;
+    const unit = this.logChartUnit?.value || this.logDialogChartUnit;
     const endDate = this.getChartEndDate();
     const buckets = this.buildLogDialogBucketsWindow(
       this.logDialogEntries,
       unit,
       endDate
     );
-    if (this.logDialogEntries.length === 0) {
-      ctx.fillStyle = muted;
-      ctx.font = "12px Epilogue, sans-serif";
-      ctx.fillText("No data yet.", 12, 24);
-      return;
-    }
-    if (buckets.length === 0) {
-      ctx.fillStyle = muted;
-      ctx.font = "12px Epilogue, sans-serif";
-      ctx.fillText("No data yet.", 12, 24);
-      return;
-    }
+    const labels = buckets.map((item) => item.label);
+    const data = buckets.map((item) => item.count);
+    const totalCount = data.reduce((sum, value) => sum + value, 0);
+    const theme = this.getLogChartTheme();
+    const chart = this.ensureLogChartInstance(labels, data, theme);
+    if (!chart) return;
 
-    const visible = buckets;
-    const maxValue = Math.max(...visible.map((item) => item.count), 1);
-    const paddingX = 12;
-    const paddingY = 20;
-    const chartHeight = height - paddingY * 2 - 16;
-    const chartWidth = width - paddingX * 2;
-    const barWidth = chartWidth / visible.length;
-    const baseY = paddingY + chartHeight;
-
-    ctx.strokeStyle = border;
-    ctx.beginPath();
-    ctx.moveTo(paddingX, baseY + 0.5);
-    ctx.lineTo(paddingX + chartWidth, baseY + 0.5);
-    ctx.stroke();
-
-    visible.forEach((item, index) => {
-      const valueHeight = (item.count / maxValue) * chartHeight;
-      const x = paddingX + index * barWidth;
-      const barPadding = Math.min(10, barWidth * 0.2);
-      ctx.fillStyle = accent;
-      ctx.fillRect(
-        x + barPadding,
-        baseY - valueHeight,
-        Math.max(4, barWidth - barPadding * 2),
-        valueHeight
-      );
-    });
-
-    const labelStep = Math.ceil(visible.length / 5);
-    ctx.fillStyle = muted;
-    ctx.font = "10px Epilogue, sans-serif";
-    visible.forEach((item, index) => {
-      if (index % labelStep !== 0) return;
-      const x = paddingX + index * barWidth + 4;
-      ctx.fillText(item.label, x, height - 6);
-    });
+    this.updateLogChartNote(totalCount);
+    chart.data.labels = labels;
+    chart.data.datasets[0].data = data;
+    chart.data.datasets[0].backgroundColor = theme.accent;
+    chart.options.scales.x.ticks.color = theme.muted;
+    chart.options.scales.y.ticks.color = theme.muted;
+    chart.options.scales.y.grid.color = theme.border;
+    chart.options.plugins.tooltip.backgroundColor = theme.surface;
+    chart.options.plugins.tooltip.titleColor = theme.ink;
+    chart.options.plugins.tooltip.bodyColor = theme.ink;
+    chart.options.plugins.tooltip.borderColor = theme.border;
+    chart.update();
   }
 
   bindEvents() {
@@ -1238,6 +1287,9 @@ class ProjectIdeaUI {
       const theme = this.themeService.toggle();
       this.updateThemeLabel(theme);
       this.background.updatePalette();
+      if (this.logDialog.open || this.logDialog.hasAttribute("open")) {
+        this.renderLogDialogChart();
+      }
     });
 
     this.exportButton.addEventListener("click", () => {
