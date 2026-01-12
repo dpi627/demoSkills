@@ -603,6 +603,7 @@ class ProjectIdeaUI {
     this.logDialogEmpty = document.getElementById("logDialogEmpty");
     this.logChartUnit = document.getElementById("logChartUnit");
     this.logChart = document.getElementById("logChart");
+    this.logPieChart = document.getElementById("logPieChart");
     this.logChartNote = document.querySelector(".log-dialog-chart .chart-note");
 
     this.ideaForm = document.getElementById("ideaForm");
@@ -642,6 +643,7 @@ class ProjectIdeaUI {
     this.logDialogRangeStart = null;
     this.logDialogRangeEnd = null;
     this.logChartInstance = null;
+    this.logPieChartInstance = null;
     this.logChartNoteBase = this.logChartNote?.textContent || "";
 
     const initialTheme = this.themeService.init();
@@ -955,14 +957,91 @@ class ProjectIdeaUI {
 
   getLogChartTheme() {
     const styles = getComputedStyle(document.documentElement);
+    const isDark = document.documentElement.dataset.theme === "dark";
     return {
+      isDark,
       accent: styles.getPropertyValue("--accent").trim() || "#1f8a70",
+      accentAlt: styles.getPropertyValue("--accent-2").trim() || "#e9b44c",
       muted: styles.getPropertyValue("--muted").trim() || "#5b6473",
       border:
         styles.getPropertyValue("--border").trim() || "rgba(0, 0, 0, 0.08)",
       surface: styles.getPropertyValue("--surface").trim() || "#ffffff",
       ink: styles.getPropertyValue("--ink").trim() || "#0d1b2a",
     };
+  }
+
+  parseHexColor(value) {
+    if (!value) return null;
+    const hex = value.trim().replace("#", "");
+    if (!/^[0-9a-fA-F]{3}$|^[0-9a-fA-F]{6}$/.test(hex)) return null;
+    const normalized =
+      hex.length === 3
+        ? hex
+            .split("")
+            .map((char) => char + char)
+            .join("")
+        : hex;
+    const int = parseInt(normalized, 16);
+    return {
+      r: (int >> 16) & 255,
+      g: (int >> 8) & 255,
+      b: int & 255,
+    };
+  }
+
+  rgbToHsl({ r, g, b }) {
+    const rNorm = r / 255;
+    const gNorm = g / 255;
+    const bNorm = b / 255;
+    const max = Math.max(rNorm, gNorm, bNorm);
+    const min = Math.min(rNorm, gNorm, bNorm);
+    const delta = max - min;
+    let h = 0;
+    if (delta !== 0) {
+      if (max === rNorm) {
+        h = ((gNorm - bNorm) / delta) % 6;
+      } else if (max === gNorm) {
+        h = (bNorm - rNorm) / delta + 2;
+      } else {
+        h = (rNorm - gNorm) / delta + 4;
+      }
+      h = Math.round(h * 60);
+      if (h < 0) h += 360;
+    }
+    const l = (max + min) / 2;
+    const s = delta === 0 ? 0 : delta / (1 - Math.abs(2 * l - 1));
+    return { h, s: Math.round(s * 100), l: Math.round(l * 100) };
+  }
+
+  buildPieColors(count, theme) {
+    const base = this.parseHexColor(theme.accent) || {
+      r: 31,
+      g: 138,
+      b: 112,
+    };
+    const { h, s } = this.rgbToHsl(base);
+    const baseLight = theme.isDark ? 62 : 46;
+    const saturation = Math.max(50, s);
+    const colors = Array.from({ length: count }, (_, index) => {
+      const hue = Math.round((h + index * 36) % 360);
+      const lightness = Math.min(72, baseLight + (index % 4) * 6);
+      return `hsl(${hue} ${saturation}% ${lightness}%)`;
+    });
+    if (count > 1 && theme.accentAlt) {
+      colors[1] = theme.accentAlt;
+    }
+    return colors;
+  }
+
+  buildLogDialogPieData(entries) {
+    const counts = new Map();
+    entries.forEach(({ projectName }) => {
+      if (!projectName) return;
+      counts.set(projectName, (counts.get(projectName) || 0) + 1);
+    });
+    return Array.from(counts.entries())
+      .map(([label, count]) => ({ label, count }))
+      .sort((a, b) => b.count - a.count);
   }
 
   updateLogChartNote(totalCount) {
@@ -1038,6 +1117,51 @@ class ProjectIdeaUI {
     };
   }
 
+  buildLogPieChartConfig(labels, data, theme, colors) {
+    return {
+      type: "pie",
+      data: {
+        labels,
+        datasets: [
+          {
+            data,
+            backgroundColor: colors,
+            borderColor: theme.surface,
+            borderWidth: 1,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: {
+          duration: 320,
+        },
+        plugins: {
+          legend: {
+            position: "bottom",
+            labels: {
+              color: theme.muted,
+              font: {
+                size: 11,
+              },
+              usePointStyle: true,
+              boxWidth: 8,
+            },
+          },
+          tooltip: {
+            backgroundColor: theme.surface,
+            titleColor: theme.ink,
+            bodyColor: theme.ink,
+            borderColor: theme.border,
+            borderWidth: 1,
+            displayColors: false,
+          },
+        },
+      },
+    };
+  }
+
   ensureLogChartInstance(labels, data, theme) {
     if (!this.logChart || typeof Chart === "undefined") return null;
     if (!this.logChartInstance) {
@@ -1049,9 +1173,23 @@ class ProjectIdeaUI {
     return this.logChartInstance;
   }
 
+  ensureLogPieChartInstance(labels, data, theme, colors) {
+    if (!this.logPieChart || typeof Chart === "undefined") return null;
+    if (!this.logPieChartInstance) {
+      this.logPieChartInstance = new Chart(
+        this.logPieChart,
+        this.buildLogPieChartConfig(labels, data, theme, colors)
+      );
+    }
+    return this.logPieChartInstance;
+  }
+
   resizeLogChart() {
     if (this.logChartInstance) {
       this.logChartInstance.resize();
+    }
+    if (this.logPieChartInstance) {
+      this.logPieChartInstance.resize();
     }
   }
 
@@ -1083,6 +1221,29 @@ class ProjectIdeaUI {
     chart.options.plugins.tooltip.bodyColor = theme.ink;
     chart.options.plugins.tooltip.borderColor = theme.border;
     chart.update();
+
+    const pieSeries = this.buildLogDialogPieData(this.logDialogEntries);
+    const pieLabels = pieSeries.map((item) => item.label);
+    const pieValues = pieSeries.map((item) => item.count);
+    const pieColors = this.buildPieColors(pieLabels.length, theme);
+    const pieChart = this.ensureLogPieChartInstance(
+      pieLabels,
+      pieValues,
+      theme,
+      pieColors
+    );
+    if (!pieChart) return;
+    pieChart.data.labels = pieLabels;
+    pieChart.data.datasets[0].data = pieValues;
+    pieChart.data.datasets[0].backgroundColor = pieColors;
+    pieChart.data.datasets[0].borderColor = theme.surface;
+    pieChart.options.plugins.legend.display = pieLabels.length > 0;
+    pieChart.options.plugins.legend.labels.color = theme.muted;
+    pieChart.options.plugins.tooltip.backgroundColor = theme.surface;
+    pieChart.options.plugins.tooltip.titleColor = theme.ink;
+    pieChart.options.plugins.tooltip.bodyColor = theme.ink;
+    pieChart.options.plugins.tooltip.borderColor = theme.border;
+    pieChart.update();
   }
 
   bindEvents() {
