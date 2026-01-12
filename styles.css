@@ -802,6 +802,14 @@ button:hover {
   box-shadow: var(--shadow);
 }
 
+.footer-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
 .footer-brand {
   display: flex;
   align-items: center;
@@ -823,6 +831,37 @@ button:hover {
   margin: 2px 0 0;
   font-size: 12px;
   color: var(--muted);
+}
+
+.footer-badge {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+.footer-aside {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+  text-align: right;
+}
+
+.footer-copyright {
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.footer-bottom {
+  margin-top: 16px;
+  display: grid;
+  justify-items: center;
 }
 
 .footer-meta {
@@ -889,5 +928,10 @@ button:hover {
 
   .footer-meta {
     grid-template-columns: 1fr;
+  }
+
+  .footer-aside {
+    justify-items: start;
+    text-align: left;
   }
 }
