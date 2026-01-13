@@ -24,12 +24,12 @@
       </div>
       <div class="topbar-actions">
         <button id="themeToggle" class="ghost theme-toggle" type="button" aria-label="Dark mode"></button>
-        <button id="exportData" class="ghost topbar-icon" type="button" aria-label="Export data"></button>
-        <button id="importData" class="ghost topbar-icon" type="button" aria-label="Import data"></button>
-        <input id="importFile" type="file" accept=".json,application/json" class="hidden" />
+        <button id="settingsToggle" class="ghost topbar-icon" type="button" aria-label="Settings"></button>
         <button id="logToggle" class="ghost log-toggle" type="button" aria-label="Hide log"></button>
       </div>
     </header>
+
+    <input id="importFile" type="file" accept=".json,application/json" class="hidden" />
 
     <main class="workspace">
       <!-- section project panel -->
@@ -157,6 +157,8 @@
     </footer>
   </div>
 
+  <div id="notifyStack" class="notify-stack" aria-live="polite" aria-atomic="true"></div>
+
   <button
     id="serviceMonitor"
     class="service-monitor"
@@ -194,6 +196,121 @@
         <button id="confirmConfirm" class="primary" type="submit">Delete</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog id="settingsDialog" class="dialog settings-dialog">
+    <div class="dialog-card settings-card">
+      <div class="settings-header">
+        <div>
+          <p class="eyebrow">Settings</p>
+          <h3>Workspace settings</h3>
+        </div>
+        <button id="settingsClose" class="ghost" type="button">Close</button>
+      </div>
+      <div class="settings-body">
+        <div class="settings-menu" role="tablist" aria-label="Settings sections">
+          <button class="settings-tab is-active" type="button" data-panel="data" aria-pressed="true">Data</button>
+          <button class="settings-tab" type="button" data-panel="proxy" aria-pressed="false">Proxy</button>
+          <button class="settings-tab" type="button" data-panel="theme" aria-pressed="false">Theme</button>
+        </div>
+        <div class="settings-content">
+          <section class="settings-panel is-active" data-panel="data" aria-hidden="false">
+            <div class="settings-section">
+              <div class="settings-row">
+                <div>
+                  <h4>Export or import</h4>
+                  <p class="settings-help">Back up or replace the current workspace.</p>
+                </div>
+                <div class="settings-actions">
+                  <button id="settingsExport" class="primary" type="button">Export</button>
+                  <button id="settingsImport" class="ghost" type="button">Import</button>
+                </div>
+              </div>
+            </div>
+            <div class="settings-section">
+              <h4>JSON format</h4>
+              <pre class="settings-code">{
+  "projects": [
+    {
+      "id": "project-id",
+      "name": "Project name",
+      "description": "",
+      "ideas": [
+        {
+          "id": "idea-id",
+          "text": "Idea text",
+          "done": false,
+          "createdAt": 1700000000000,
+          "finishedAt": null
+        }
+      ]
+    }
+  ],
+  "theme": "system",
+  "uiState": {
+    "activeProjectId": "project-id",
+    "isLogVisible": true,
+    "ideaFilter": "todo",
+    "serviceMonitorEnabled": true,
+    "serviceMonitorUrl": "http://localhost:8080"
+  }
+}</pre>
+            </div>
+          </section>
+          <section class="settings-panel" data-panel="proxy" aria-hidden="true">
+            <form id="settingsProxyForm" class="settings-section" autocomplete="off">
+              <div class="settings-row">
+                <div>
+                  <h4>Service monitor</h4>
+                  <p class="settings-help">Toggle the corner status indicator.</p>
+                </div>
+                <button id="settingsProxyToggle" class="settings-toggle" type="button" aria-pressed="true">
+                  <span class="toggle-track">
+                    <span class="toggle-thumb"></span>
+                  </span>
+                  <span class="toggle-text">Enabled</span>
+                </button>
+              </div>
+              <label class="settings-field">
+                <span>Proxy URL</span>
+                <input id="settingsProxyUrl" type="text" placeholder="http://localhost:8080" />
+              </label>
+              <div class="settings-actions">
+                <button class="primary" type="submit">Apply</button>
+              </div>
+            </form>
+          </section>
+          <section class="settings-panel" data-panel="theme" aria-hidden="true">
+            <div class="settings-section">
+              <h4>Theme preference</h4>
+              <div class="settings-options">
+                <label class="settings-option">
+                  <input type="radio" name="themePreference" value="system" />
+                  <div>
+                    <span class="option-title">System default</span>
+                    <span class="option-note">Follow the OS light or dark mode.</span>
+                  </div>
+                </label>
+                <label class="settings-option">
+                  <input type="radio" name="themePreference" value="dark" />
+                  <div>
+                    <span class="option-title">Dark</span>
+                    <span class="option-note">Force dark mode across the app.</span>
+                  </div>
+                </label>
+                <label class="settings-option">
+                  <input type="radio" name="themePreference" value="light" />
+                  <div>
+                    <span class="option-title">Light</span>
+                    <span class="option-note">Keep everything bright and airy.</span>
+                  </div>
+                </label>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
   </dialog>
 
   <dialog id="logDialog" class="dialog">

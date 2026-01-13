@@ -133,6 +133,12 @@ const ICONS = {
       <line x1="12" y1="3" x2="12" y2="15" />
     </svg>
   `,
+  gear: `
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 0 0-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 0 0-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 0 0-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 0 0-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 0 0 1.066-2.573c-.94-1.543.826-3.31 2.37-2.37a1.724 1.724 0 0 0 2.572-1.065z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  `,
 };
 
 // Domain layer
@@ -409,26 +415,56 @@ class ProjectService {
 class ThemeService {
   constructor(storageKey) {
     this.storageKey = storageKey;
+    this.preference = "system";
   }
 
   init() {
-    const saved = localStorage.getItem(this.storageKey);
-    const prefersDark = window.matchMedia?.("(prefers-color-scheme: dark)").matches;
-    const theme = saved || (prefersDark ? "dark" : "light");
-    this.applyTheme(theme);
-    return theme;
+    const preference = this.getPreference();
+    return this.applyThemePreference(preference);
   }
 
   toggle() {
-    const current = document.documentElement.dataset.theme || "light";
+    const current = this.getResolvedTheme();
     const next = current === "dark" ? "light" : "dark";
-    this.applyTheme(next);
-    return next;
+    return this.applyThemePreference(next);
   }
 
-  applyTheme(theme) {
-    document.documentElement.dataset.theme = theme;
-    localStorage.setItem(this.storageKey, theme);
+  getPreference() {
+    const saved = localStorage.getItem(this.storageKey);
+    if (saved === "light" || saved === "dark" || saved === "system") {
+      return saved;
+    }
+    return "system";
+  }
+
+  getCurrentTheme() {
+    return this.preference || this.getPreference();
+  }
+
+  getResolvedTheme() {
+    return (
+      document.documentElement.dataset.theme ||
+      this.resolveTheme(this.getPreference())
+    );
+  }
+
+  resolveTheme(preference) {
+    if (preference === "dark") return "dark";
+    if (preference === "light") return "light";
+    const prefersDark = window.matchMedia?.("(prefers-color-scheme: dark)").matches;
+    return prefersDark ? "dark" : "light";
+  }
+
+  applyThemePreference(preference) {
+    const next =
+      preference === "dark" || preference === "light" || preference === "system"
+        ? preference
+        : "system";
+    this.preference = next;
+    const resolved = this.resolveTheme(next);
+    document.documentElement.dataset.theme = resolved;
+    localStorage.setItem(this.storageKey, next);
+    return resolved;
   }
 }
 
@@ -587,10 +623,12 @@ class ProjectIdeaUI {
     this.progressFill = document.getElementById("progressFill");
     this.progressLabel = document.getElementById("progressLabel");
     this.themeToggle = document.getElementById("themeToggle");
+    this.settingsToggle = document.getElementById("settingsToggle");
     this.exportButton = document.getElementById("exportData");
     this.importButton = document.getElementById("importData");
     this.importFileInput = document.getElementById("importFile");
     this.logToggle = document.getElementById("logToggle");
+    this.notifyStack = document.getElementById("notifyStack");
     this.workspace = document.querySelector(".workspace");
     this.logPanel = document.querySelector(".log-panel");
     this.logViewAll = document.getElementById("logViewAll");
@@ -610,6 +648,22 @@ class ProjectIdeaUI {
     this.logPieChart = document.getElementById("logPieChart");
     this.logChartNote = document.querySelector(".log-dialog-chart .chart-note");
     this.serviceMonitorButton = document.getElementById("serviceMonitor");
+    this.settingsDialog = document.getElementById("settingsDialog");
+    this.settingsClose = document.getElementById("settingsClose");
+    this.settingsMenuButtons = Array.from(
+      document.querySelectorAll(".settings-menu button[data-panel]")
+    );
+    this.settingsPanels = Array.from(
+      document.querySelectorAll(".settings-panel")
+    );
+    this.settingsExportButton = document.getElementById("settingsExport");
+    this.settingsImportButton = document.getElementById("settingsImport");
+    this.settingsProxyToggle = document.getElementById("settingsProxyToggle");
+    this.settingsProxyUrlInput = document.getElementById("settingsProxyUrl");
+    this.settingsProxyForm = document.getElementById("settingsProxyForm");
+    this.settingsThemeOptions = Array.from(
+      document.querySelectorAll('input[name="themePreference"]')
+    );
 
     this.ideaForm = document.getElementById("ideaForm");
     this.ideaTextInput = document.getElementById("ideaText");
@@ -651,11 +705,17 @@ class ProjectIdeaUI {
     this.logPieChartInstance = null;
     this.logChartNoteBase = this.logChartNote?.textContent || "";
     this.chartJsPromise = null;
-    this.serviceMonitorUrl = "http://localhost:8080/";
+    this.serviceMonitorEnabled =
+      typeof uiState.serviceMonitorEnabled === "boolean"
+        ? uiState.serviceMonitorEnabled
+        : true;
+    this.serviceMonitorUrl = this.normalizeProxyUrl(uiState.serviceMonitorUrl);
     this.serviceMonitorIntervalMs = 5000;
     this.serviceMonitorTimeoutMs = 2500;
     this.serviceMonitorTimer = null;
     this.serviceMonitorInFlight = false;
+    this.notifyLimit = 4;
+    this.notifyDuration = 3200;
 
     const initialTheme = this.themeService.init();
     this.updateThemeLabel(initialTheme);
@@ -692,13 +752,281 @@ class ProjectIdeaUI {
     return allowed.includes(filter) ? filter : "todo";
   }
 
-  persistUiState() {
-    const payload = {
+  getUiState() {
+    return {
       activeProjectId: this.activeProjectId,
       isLogVisible: this.isLogVisible,
       ideaFilter: this.ideaFilter,
+      serviceMonitorEnabled: this.serviceMonitorEnabled,
+      serviceMonitorUrl: this.serviceMonitorUrl,
     };
+  }
+
+  persistUiState() {
+    const payload = this.getUiState();
     localStorage.setItem(UI_STATE_KEY, JSON.stringify(payload));
+  }
+
+  formatNotificationText(text, maxLength = 70) {
+    if (!text) return "";
+    const clean = String(text).trim();
+    if (!clean) return "";
+    if (clean.length <= maxLength) return clean;
+    return `${clean.slice(0, Math.max(0, maxLength - 3))}...`;
+  }
+
+  dismissNotification(toast) {
+    if (!toast || toast.dataset.state === "leaving") return;
+    toast.dataset.state = "leaving";
+    toast.classList.add("is-hiding");
+    window.setTimeout(() => {
+      toast.remove();
+    }, 240);
+  }
+
+  pushNotification({ title, message, tone = "info", duration } = {}) {
+    if (!this.notifyStack || !title) return;
+    const toast = document.createElement("div");
+    toast.className = "notify-toast";
+    toast.dataset.tone = tone;
+    toast.setAttribute("role", "status");
+
+    const dot = document.createElement("span");
+    dot.className = "notify-dot";
+    dot.setAttribute("aria-hidden", "true");
+
+    const body = document.createElement("div");
+    body.className = "notify-body";
+
+    const titleEl = document.createElement("p");
+    titleEl.className = "notify-title";
+    titleEl.textContent = title;
+    body.appendChild(titleEl);
+
+    const finalMessage = this.formatNotificationText(message);
+    if (finalMessage) {
+      const messageEl = document.createElement("p");
+      messageEl.className = "notify-message";
+      messageEl.textContent = finalMessage;
+      body.appendChild(messageEl);
+    }
+
+    toast.append(dot, body);
+    this.notifyStack.appendChild(toast);
+
+    const displayDuration = Number.isFinite(duration)
+      ? duration
+      : this.notifyDuration;
+    const timeoutId = window.setTimeout(
+      () => this.dismissNotification(toast),
+      displayDuration
+    );
+
+    toast.addEventListener("click", () => {
+      window.clearTimeout(timeoutId);
+      this.dismissNotification(toast);
+    });
+
+    while (this.notifyStack.children.length > this.notifyLimit) {
+      this.dismissNotification(this.notifyStack.firstElementChild);
+    }
+  }
+
+  normalizeProxyUrl(value) {
+    const clean = String(value || "").trim();
+    return clean || "http://localhost:8080";
+  }
+
+  exportData() {
+    const data = this.buildExportPayload();
+    const json = JSON.stringify(data, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const stamp = new Date().toISOString().slice(0, 10);
+    link.href = url;
+    link.download = `project-ideas-${stamp}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  triggerImport() {
+    if (!this.importFileInput) return;
+    this.importFileInput.value = "";
+    this.importFileInput.click();
+  }
+
+  setSettingsPanel(panel) {
+    if (!panel) return;
+    this.settingsMenuButtons.forEach((button) => {
+      const isActive = button.dataset.panel === panel;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-pressed", isActive);
+    });
+    this.settingsPanels.forEach((section) => {
+      const isActive = section.dataset.panel === panel;
+      section.classList.toggle("is-active", isActive);
+      section.setAttribute("aria-hidden", !isActive);
+    });
+  }
+
+  syncSettingsState() {
+    if (this.settingsProxyUrlInput) {
+      this.settingsProxyUrlInput.value = this.serviceMonitorUrl;
+    }
+    if (this.settingsThemeOptions.length) {
+      const preference = this.themeService.getCurrentTheme();
+      this.settingsThemeOptions.forEach((option) => {
+        option.checked = option.value === preference;
+      });
+    }
+    this.updateProxyToggle(this.serviceMonitorEnabled);
+  }
+
+  openSettingsDialog(panel = "theme") {
+    if (!this.settingsDialog) return;
+    this.syncSettingsState();
+    this.setSettingsPanel(panel);
+    if (typeof this.settingsDialog.showModal === "function") {
+      this.settingsDialog.showModal();
+    } else {
+      this.settingsDialog.setAttribute("open", "true");
+    }
+  }
+
+  closeSettingsDialog() {
+    if (!this.settingsDialog) return;
+    if (this.settingsDialog.open) {
+      this.settingsDialog.close();
+    } else {
+      this.settingsDialog.removeAttribute("open");
+    }
+  }
+
+  updateProxyToggle(isEnabled) {
+    if (!this.settingsProxyToggle) return;
+    this.settingsProxyToggle.classList.toggle("is-active", isEnabled);
+    this.settingsProxyToggle.setAttribute("aria-pressed", isEnabled);
+    const label = isEnabled ? "Enabled" : "Disabled";
+    const textNode = this.settingsProxyToggle.querySelector(".toggle-text");
+    if (textNode) textNode.textContent = label;
+  }
+
+  setServiceMonitorUrl(url, { skipPersist = false } = {}) {
+    this.serviceMonitorUrl = this.normalizeProxyUrl(url);
+    if (this.settingsProxyUrlInput) {
+      this.settingsProxyUrlInput.value = this.serviceMonitorUrl;
+    }
+    if (!skipPersist) {
+      this.persistUiState();
+    }
+    if (this.serviceMonitorEnabled) {
+      this.checkServiceAlive(true);
+    }
+  }
+
+  setServiceMonitorEnabled(isEnabled, { skipPersist = false } = {}) {
+    this.serviceMonitorEnabled = Boolean(isEnabled);
+    if (!skipPersist) {
+      this.persistUiState();
+    }
+    if (!this.serviceMonitorButton) return;
+    this.serviceMonitorButton.classList.toggle(
+      "hidden",
+      !this.serviceMonitorEnabled
+    );
+    if (this.serviceMonitorEnabled) {
+      this.startServiceMonitor();
+    } else {
+      this.stopServiceMonitor();
+    }
+    this.updateProxyToggle(this.serviceMonitorEnabled);
+  }
+
+  startServiceMonitor() {
+    if (!this.serviceMonitorButton) return;
+    if (this.serviceMonitorTimer) {
+      window.clearInterval(this.serviceMonitorTimer);
+    }
+    this.updateServiceMonitor("checking");
+    this.checkServiceAlive();
+    this.serviceMonitorTimer = window.setInterval(() => {
+      this.checkServiceAlive();
+    }, this.serviceMonitorIntervalMs);
+  }
+
+  stopServiceMonitor() {
+    if (this.serviceMonitorTimer) {
+      window.clearInterval(this.serviceMonitorTimer);
+    }
+    this.serviceMonitorTimer = null;
+    this.serviceMonitorInFlight = false;
+  }
+
+  applyThemePreference(preference) {
+    const resolved = this.themeService.applyThemePreference(preference);
+    this.updateThemeLabel(resolved);
+    this.background.updatePalette();
+    if (this.logDialog.open || this.logDialog.hasAttribute("open")) {
+      this.renderLogDialogChart();
+    }
+  }
+
+  buildExportPayload() {
+    return {
+      projects: this.service.exportProjects(),
+      theme: this.themeService.getCurrentTheme(),
+      uiState: this.getUiState(),
+    };
+  }
+
+  normalizeImportPayload(payload) {
+    if (Array.isArray(payload)) {
+      return { projects: payload };
+    }
+    if (!payload || typeof payload !== "object") {
+      throw new Error("Import data must be an array of projects.");
+    }
+    if (Array.isArray(payload.projects)) {
+      return {
+        projects: payload.projects,
+        theme: payload.theme,
+        uiState: payload.uiState,
+      };
+    }
+    throw new Error("Import data must be an array of projects.");
+  }
+
+  applyImportedTheme(theme) {
+    if (theme !== "dark" && theme !== "light" && theme !== "system") return;
+    this.applyThemePreference(theme);
+  }
+
+  applyImportedUiState(uiState) {
+    if (!uiState || typeof uiState !== "object") return false;
+    const nextIdeaFilter =
+      typeof uiState.ideaFilter === "string"
+        ? this.resolveIdeaFilter(uiState.ideaFilter)
+        : this.ideaFilter;
+    if (typeof uiState.serviceMonitorUrl === "string") {
+      this.setServiceMonitorUrl(uiState.serviceMonitorUrl, { skipPersist: true });
+    }
+    if (typeof uiState.serviceMonitorEnabled === "boolean") {
+      this.setServiceMonitorEnabled(uiState.serviceMonitorEnabled, {
+        skipPersist: true,
+      });
+    }
+    this.isLogVisible =
+      typeof uiState.isLogVisible === "boolean"
+        ? uiState.isLogVisible
+        : this.isLogVisible;
+    this.ideaFilter = nextIdeaFilter;
+    this.activeProjectId = this.resolveActiveProjectId(uiState.activeProjectId);
+    this.persistUiState();
+    this.applyLogVisibility();
+    return true;
   }
 
   setActiveProjectId(projectId) {
@@ -1293,13 +1621,12 @@ class ProjectIdeaUI {
   initServiceMonitor() {
     if (!this.serviceMonitorButton) return;
     this.serviceMonitorButton.addEventListener("click", () => {
+      if (!this.serviceMonitorEnabled) return;
       this.checkServiceAlive(true);
     });
-    this.updateServiceMonitor("checking");
-    this.checkServiceAlive();
-    this.serviceMonitorTimer = window.setInterval(() => {
-      this.checkServiceAlive();
-    }, this.serviceMonitorIntervalMs);
+    this.setServiceMonitorEnabled(this.serviceMonitorEnabled, {
+      skipPersist: true,
+    });
   }
 
   updateServiceMonitor(state) {
@@ -1325,7 +1652,13 @@ class ProjectIdeaUI {
   }
 
   async checkServiceAlive(showChecking = false) {
-    if (!this.serviceMonitorButton || this.serviceMonitorInFlight) return;
+    if (
+      !this.serviceMonitorButton ||
+      !this.serviceMonitorEnabled ||
+      this.serviceMonitorInFlight
+    ) {
+      return;
+    }
     this.serviceMonitorInFlight = true;
     if (showChecking) {
       this.updateServiceMonitor("checking");
@@ -1376,6 +1709,11 @@ class ProjectIdeaUI {
       const description = this.projectDescriptionInput.value.trim();
       const project = this.service.createProject(name, description);
       this.animateProjectsOnNextRender = true;
+      this.pushNotification({
+        title: "Project added",
+        message: project.name,
+        tone: "success",
+      });
       this.projectNameInput.value = "";
       this.projectDescriptionInput.value = "";
       this.setActiveProjectId(project.id);
@@ -1411,6 +1749,11 @@ class ProjectIdeaUI {
             onConfirm: () => {
               this.service.deleteProject(projectId);
               this.animateProjectsOnNextRender = true;
+              this.pushNotification({
+                title: "Project deleted",
+                message: project.name,
+                tone: "warning",
+              });
               if (this.activeProjectId === projectId) {
                 this.setActiveProjectId(
                   this.service.getProjects()[0]?.id || null
@@ -1470,6 +1813,11 @@ class ProjectIdeaUI {
       if (!text) return;
       this.service.addIdea(this.activeProjectId, text);
       this.animateIdeasOnNextRender = true;
+      this.pushNotification({
+        title: "Idea added",
+        message: text,
+        tone: "success",
+      });
       this.ideaTextInput.value = "";
       this.render();
     });
@@ -1498,12 +1846,22 @@ class ProjectIdeaUI {
             onConfirm: () => {
               this.service.toggleIdea(this.activeProjectId, ideaId);
               this.animateIdeasOnNextRender = false;
+              this.pushNotification({
+                title: "Idea reopened",
+                message: idea.text,
+                tone: "info",
+              });
               this.render();
             },
           });
         } else {
           this.service.toggleIdea(this.activeProjectId, ideaId);
           this.animateIdeasOnNextRender = false;
+          this.pushNotification({
+            title: "Idea completed",
+            message: idea.text,
+            tone: "success",
+          });
           this.render();
         }
         return;
@@ -1533,6 +1891,11 @@ class ProjectIdeaUI {
           onConfirm: () => {
             this.service.deleteIdea(this.activeProjectId, ideaId);
             this.animateIdeasOnNextRender = true;
+            this.pushNotification({
+              title: "Idea deleted",
+              message: idea.text,
+              tone: "warning",
+            });
             this.render();
           },
         });
@@ -1585,24 +1948,16 @@ class ProjectIdeaUI {
       }
     });
 
-    this.exportButton.addEventListener("click", () => {
-      const data = this.service.exportProjects();
-      const json = JSON.stringify(data, null, 2);
-      const blob = new Blob([json], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      const stamp = new Date().toISOString().slice(0, 10);
-      link.href = url;
-      link.download = `project-ideas-${stamp}.json`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+    this.settingsToggle?.addEventListener("click", () => {
+      this.openSettingsDialog("data");
     });
 
-    this.importButton.addEventListener("click", () => {
-      this.importFileInput.value = "";
-      this.importFileInput.click();
+    this.exportButton?.addEventListener("click", () => {
+      this.exportData();
+    });
+
+    this.importButton?.addEventListener("click", () => {
+      this.triggerImport();
     });
 
     this.importFileInput.addEventListener("change", (event) => {
@@ -1690,6 +2045,11 @@ class ProjectIdeaUI {
           if (this.activeProjectId === projectId) {
             this.animateIdeasOnNextRender = false;
           }
+          this.pushNotification({
+            title: "Idea reopened",
+            message: idea.text,
+            tone: "info",
+          });
           this.applyLogDialogFilters();
           this.render();
         },
@@ -1732,6 +2092,11 @@ class ProjectIdeaUI {
           if (this.activeProjectId === projectId) {
             this.animateIdeasOnNextRender = false;
           }
+          this.pushNotification({
+            title: "Idea reopened",
+            message: idea.text,
+            tone: "info",
+          });
           this.render();
         },
       });
@@ -1748,6 +2113,11 @@ class ProjectIdeaUI {
       if (this.editingMode === "idea" && this.activeProjectId && this.editingIdeaId) {
         this.service.updateIdeaText(this.activeProjectId, this.editingIdeaId, text);
         this.animateIdeasOnNextRender = true;
+        this.pushNotification({
+          title: "Idea updated",
+          message: text,
+          tone: "neutral",
+        });
       }
 
       if (this.editingMode === "project" && this.editingProjectId) {
@@ -1757,6 +2127,11 @@ class ProjectIdeaUI {
           this.editDescriptionInput.value
         );
         this.animateProjectsOnNextRender = true;
+        this.pushNotification({
+          title: "Project updated",
+          message: text,
+          tone: "neutral",
+        });
       }
 
       this.closeEditDialog();
@@ -1790,6 +2165,54 @@ class ProjectIdeaUI {
         this.closeConfirmDialog();
       }
     });
+
+    this.settingsClose?.addEventListener("click", () => {
+      this.closeSettingsDialog();
+    });
+
+    this.settingsDialog?.addEventListener("click", (event) => {
+      if (event.target === this.settingsDialog) {
+        this.closeSettingsDialog();
+      }
+    });
+
+    this.settingsMenuButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        this.setSettingsPanel(button.dataset.panel);
+      });
+    });
+
+    this.settingsExportButton?.addEventListener("click", () => {
+      this.exportData();
+    });
+
+    this.settingsImportButton?.addEventListener("click", () => {
+      this.triggerImport();
+    });
+
+    this.settingsProxyToggle?.addEventListener("click", () => {
+      this.setServiceMonitorEnabled(!this.serviceMonitorEnabled);
+    });
+
+    this.settingsProxyForm?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      if (!this.settingsProxyUrlInput) return;
+      this.setServiceMonitorUrl(this.settingsProxyUrlInput.value);
+      this.pushNotification({
+        title: "Proxy updated",
+        message: this.serviceMonitorUrl,
+        tone: "neutral",
+      });
+    });
+
+    this.settingsThemeOptions.forEach((option) => {
+      option.addEventListener("change", (event) => {
+        const target = event.target;
+        if (!target || !target.value) return;
+        this.applyThemePreference(target.value);
+        this.syncSettingsState();
+      });
+    });
   }
 
   updateThemeLabel(theme) {
@@ -1801,13 +2224,23 @@ class ProjectIdeaUI {
   }
 
   updateDataButtons() {
-    this.exportButton.innerHTML = `${ICONS.download}<span class="sr-only">Export data</span>`;
-    this.exportButton.setAttribute("aria-label", "Export data");
-    this.exportButton.title = "Export data";
+    if (this.exportButton) {
+      this.exportButton.innerHTML = `${ICONS.download}<span class="sr-only">Export data</span>`;
+      this.exportButton.setAttribute("aria-label", "Export data");
+      this.exportButton.title = "Export data";
+    }
 
-    this.importButton.innerHTML = `${ICONS.upload}<span class="sr-only">Import data</span>`;
-    this.importButton.setAttribute("aria-label", "Import data");
-    this.importButton.title = "Import data";
+    if (this.importButton) {
+      this.importButton.innerHTML = `${ICONS.upload}<span class="sr-only">Import data</span>`;
+      this.importButton.setAttribute("aria-label", "Import data");
+      this.importButton.title = "Import data";
+    }
+
+    if (this.settingsToggle) {
+      this.settingsToggle.innerHTML = `${ICONS.gear}<span class="sr-only">Settings</span>`;
+      this.settingsToggle.setAttribute("aria-label", "Settings");
+      this.settingsToggle.title = "Settings";
+    }
   }
 
   updateLogToggleLabel() {
@@ -1827,8 +2260,15 @@ class ProjectIdeaUI {
 
   applyImport(payload) {
     try {
-      this.service.importProjects(payload);
-      this.setActiveProjectId(this.service.getProjects()[0]?.id || null);
+      const normalized = this.normalizeImportPayload(payload);
+      this.service.importProjects(normalized.projects);
+      if (normalized.theme) {
+        this.applyImportedTheme(normalized.theme);
+      }
+      const appliedUiState = this.applyImportedUiState(normalized.uiState);
+      if (!appliedUiState) {
+        this.setActiveProjectId(this.service.getProjects()[0]?.id || null);
+      }
       this.animateProjectsOnNextRender = true;
       this.animateIdeasOnNextRender = true;
       this.render();
@@ -1859,6 +2299,11 @@ class ProjectIdeaUI {
         if (mode === "idea" && this.activeProjectId) {
           this.service.updateIdeaText(this.activeProjectId, id, nextText);
           this.animateIdeasOnNextRender = true;
+          this.pushNotification({
+            title: "Idea updated",
+            message: nextText,
+            tone: "neutral",
+          });
           this.render();
           this.closeEditDialog();
           return;
@@ -1873,6 +2318,11 @@ class ProjectIdeaUI {
             this.service.updateProjectDescription(id, nextDescription);
           }
           this.animateProjectsOnNextRender = true;
+          this.pushNotification({
+            title: "Project updated",
+            message: nextText,
+            tone: "neutral",
+          });
           this.render();
           this.closeEditDialog();
           return;
@@ -1921,13 +2371,22 @@ class ProjectIdeaUI {
   }
 
   copyIdeaText(text) {
+    const notify = () => {
+      this.pushNotification({
+        title: "Idea copied",
+        message: text,
+        tone: "info",
+      });
+    };
     if (navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText(text).catch(() => {
+      navigator.clipboard.writeText(text).then(notify).catch(() => {
         this.copyIdeaTextFallback(text);
+        notify();
       });
       return;
     }
     this.copyIdeaTextFallback(text);
+    notify();
   }
 
   copyIdeaTextFallback(text) {
